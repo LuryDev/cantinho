@@ -5,7 +5,7 @@
 import { gerarId } from '../ui/dom.js';
 import { reduzirImagem } from './imagens.js';
 
-const COLECOES = new Set(['cartas', 'listas', 'filmes', 'videos', 'memorias']);
+const COLECOES = new Set(['cartas', 'listas', 'filmes', 'videos', 'memorias', 'mensagens']);
 const BUCKET = 'memorias';
 const VALIDADE_URL = 60 * 60; // 1 hora
 
@@ -41,11 +41,13 @@ export function criarStoreSupabase(cliente, perfil) {
     tipo: 'supabase',
     descricao: 'Os dados ficam salvos no Supabase e sincronizam entre os dispositivos de vocês.',
 
-    async listar(colecao) {
+    async listar(colecao, { limite } = {}) {
       conferir(colecao);
-      const { data, error } = await cliente.from(colecao)
+      let consulta = cliente.from(colecao)
         .select('id, dados, criado_em, atualizado_em')
         .order('criado_em', { ascending: false });
+      if (limite) consulta = consulta.limit(limite);
+      const { data, error } = await consulta;
       if (error) throw falha(error, 'carregar os dados');
       const docs = data.map(paraDoc);
       const caminhos = docs.map((d) => d.imagemPath).filter(Boolean);

@@ -4,7 +4,8 @@
 // Interface de um store:
 //   listar(colecao) · salvar(colecao, doc) · remover(colecao, id)
 //   obterAjustes() · salvarAjustes(parcial) · enviarImagem(arquivo)
-// Coleções: cartas, listas, filmes, videos, memorias
+// Coleções: cartas, listas, filmes, videos, memorias, mensagens (chat do cinema)
+// listar(colecao, { limite }) devolve os mais novos primeiro.
 
 let atual = null;
 
@@ -16,7 +17,7 @@ function exigir() {
   return atual;
 }
 
-export const listar = (colecao) => exigir().listar(colecao);
+export const listar = (colecao, opcoes) => exigir().listar(colecao, opcoes);
 export const salvar = (colecao, doc) => exigir().salvar(colecao, doc);
 export const remover = (colecao, id) => exigir().remover(colecao, id);
 export const obterAjustes = () => exigir().obterAjustes();

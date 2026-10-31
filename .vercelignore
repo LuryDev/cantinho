@@ -4,3 +4,4 @@ supabase/
 .env
 .env.*
 !.env.example
+scripts/

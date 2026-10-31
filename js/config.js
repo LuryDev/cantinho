@@ -8,6 +8,8 @@ export const config = Object.freeze({
   loginDominio: String(bruto.loginDominio || 'nossocantinho.app').trim().replace(/^@/, ''),
   tmdbProxyUrl: String(bruto.tmdbProxyUrl || 'api/tmdb/search'),
   tmdbImagens: 'https://image.tmdb.org/t/p/',
+  notificacoes: bruto.notificacoes === true,
+  vapidPublicKey: String(bruto.vapidPublicKey || '').trim(),
 });
 
 export const supabaseConfigurado = Boolean(config.supabaseUrl && config.supabaseAnonKey);

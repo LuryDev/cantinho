@@ -20,6 +20,7 @@ import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buscarTmdb, tmdbAtivo } from './lib/tmdb.mjs';
 import { configPublicaJs } from './lib/config-publica.mjs';
+import { enviarNotificacao, notificacoesAtivas } from './lib/notificar.mjs';
 
 const RAIZ = resolve(fileURLToPath(new URL('.', import.meta.url)));
 
@@ -53,6 +54,7 @@ const TIPOS = {
   '.js': 'text/javascript; charset=utf-8',
   '.mjs': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
@@ -64,7 +66,7 @@ const TIPOS = {
 };
 
 // Arquivos que nunca devem ser servidos
-const BLOQUEADOS = [/^\/\.env/i, /^\/servidor-local\.mjs$/i, /^\/package(-lock)?\.json$/i, /^\/\.git/i, /^\/node_modules/i, /^\/supabase\//i, /^\/lib\//i, /^\/api\//i];
+const BLOQUEADOS = [/^\/scripts\//i, /^\/\.env/i, /^\/servidor-local\.mjs$/i, /^\/package(-lock)?\.json$/i, /^\/\.git/i, /^\/node_modules/i, /^\/supabase\//i, /^\/lib\//i, /^\/api\//i];
 
 function enviar(res, status, corpo, cabecalhos = {}) {
   res.writeHead(status, {
@@ -80,11 +82,31 @@ async function proxyTmdb(url, res) {
   return enviar(res, status, corpo, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': status === 200 ? 'private, max-age=300' : 'no-store' });
 }
 
+// POST /api/notificar (mesma lógica da função da Vercel)
+async function rotaNotificar(req, res) {
+  const json = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
+  if (req.method !== 'POST') return enviar(res, 405, JSON.stringify({ erro: 'Use POST.' }), json);
+  let bruto = '';
+  for await (const parte of req) { bruto += parte; if (bruto.length > 10000) return enviar(res, 413, JSON.stringify({ erro: 'Pedido grande demais.' }), json); }
+  let dados = {};
+  try { dados = JSON.parse(bruto || '{}'); } catch { /* corpo inválido */ }
+  const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+  try {
+    const { status, corpo } = await enviarNotificacao({ token, dados });
+    return enviar(res, status, JSON.stringify(corpo), json);
+  } catch (e) {
+    console.error('[notificar]', e.message);
+    const faltaPacote = /web-push/.test(e.message || '');
+    return enviar(res, 500, JSON.stringify({ erro: faltaPacote ? 'Rode "npm install" para instalar o pacote de notificações.' : 'Erro ao enviar a notificação.' }), json);
+  }
+}
+
 const servidor = createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     let caminho = decodeURIComponent(url.pathname);
 
+    if (caminho === '/api/notificar') return rotaNotificar(req, res);
     if (req.method !== 'GET' && req.method !== 'HEAD') return enviar(res, 405, 'Método não permitido');
 
     if (caminho === '/config.js') {
@@ -115,5 +137,6 @@ const servidor = createServer(async (req, res) => {
 servidor.listen(PORTA, () => {
   console.log(`\n  Nosso Cantinho rodando em  http://localhost:${PORTA}\n`);
   console.log(`  Supabase: ${SUPABASE_ATIVO ? 'configurado' : 'não configurado (modo demonstração)'}`);
-  console.log(`  TMDB:     ${TMDB_ATIVO ? 'proxy ativo em /api/tmdb/search' : 'não configurado (cadastro manual disponível)'}\n`);
+  console.log(`  TMDB:     ${TMDB_ATIVO ? 'proxy ativo em /api/tmdb/search' : 'não configurado (cadastro manual disponível)'}`);
+  console.log(`  Avisos:   ${notificacoesAtivas() ? 'notificações configuradas' : 'notificações não configuradas (rode "npm run chaves")'}\n`);
 });

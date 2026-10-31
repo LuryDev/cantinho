@@ -5,7 +5,7 @@ import { dadosDeExemplo } from './exemplos.js';
 import { reduzirImagem } from './imagens.js';
 
 const PREFIXO = 'nc:v1:';
-const COLECOES = ['cartas', 'listas', 'filmes', 'videos', 'memorias'];
+const COLECOES = ['cartas', 'listas', 'filmes', 'videos', 'memorias', 'mensagens'];
 
 function ler(chave, padrao) {
   try {
@@ -30,7 +30,7 @@ function gravar(chave, valor) {
 function semearSeNecessario() {
   if (localStorage.getItem(PREFIXO + 'semeado')) return;
   const ex = dadosDeExemplo();
-  for (const c of COLECOES) if (!localStorage.getItem(PREFIXO + c)) gravar(c, ex[c]);
+  for (const c of COLECOES) if (!localStorage.getItem(PREFIXO + c)) gravar(c, ex[c] || []);
   if (!localStorage.getItem(PREFIXO + 'ajustes')) gravar('ajustes', ex.ajustes);
   localStorage.setItem(PREFIXO + 'semeado', '1');
 }
@@ -42,8 +42,9 @@ export function criarStoreLocal() {
     tipo: 'local',
     descricao: 'Os dados ficam salvos apenas neste navegador e dispositivo. Não sincronizam e podem ser perdidos ao limpar os dados do navegador.',
 
-    async listar(colecao) {
-      return ler(colecao, []);
+    async listar(colecao, { limite } = {}) {
+      const itens = ler(colecao, []);
+      return limite ? itens.slice(0, limite) : itens;
     },
 
     async salvar(colecao, doc) {

@@ -542,7 +542,7 @@ html[data-tema="manu"] .lista-cartao::after { display: none; }
 
 /* ---------- Cinema: sessão juntos, reações, sessões ---------- */
 .tela-cheia { display: grid; gap: 0; }
-.tela-cheia:fullscreen { background: #000; grid-template-rows: 1fr auto; }
+.tela-cheia:fullscreen { background: #000; grid-template-rows: 1fr auto auto; }
 .tela-cheia:fullscreen .tela { aspect-ratio: auto; height: 100%; border-radius: 0; }
 .tela-cheia:-webkit-full-screen { background: #000; }
 .barra-reacoes {
@@ -651,3 +651,71 @@ html[data-movimento="reduzir"] .bilhete-dobrado, html[data-movimento="reduzir"] 
 .opcao-frase > span { display: flex; align-items: center; min-height: 44px; height: 100%; box-sizing: border-box; padding: .45rem .75rem; border-radius: var(--raio-pequeno); border: 1.5px solid var(--cor-borda); background: var(--cor-superficie); cursor: pointer; font-size: .92rem; }
 .opcao-frase input:checked + span { border-color: var(--cor-primaria); background: var(--cor-primaria-suave); font-weight: 600; }
 .opcao-emoji input:focus-visible + span, .opcao-frase input:focus-visible + span { outline: 3px solid var(--cor-foco); outline-offset: 2px; }
+
+/* ---------- Notificações e app instalado ---------- */
+.painel-notificacoes { display: grid; gap: .9rem; }
+.painel-notificacoes .aviso { margin: 0; }
+.estado-notificacoes { margin: 0; display: flex; gap: .45rem; align-items: flex-start; }
+.estado-notificacoes.ativo { color: var(--cor-sucesso); }
+.estado-notificacoes.ativo strong { color: var(--cor-texto); }
+.estado-notificacoes .icone { flex: none; margin-top: .15rem; }
+.como-instalar { border: 1px solid var(--cor-borda); border-radius: var(--raio-pequeno); background: var(--cor-superficie-2); padding: 0 1rem; }
+.como-instalar summary { display: flex; align-items: center; gap: .45rem; min-height: 44px; cursor: pointer; font-weight: 600; }
+.como-instalar[open] { padding-bottom: .9rem; }
+.como-instalar h3 { margin: .6rem 0 .3rem; font-size: 1rem; }
+.como-instalar ol { margin: 0 0 .4rem; padding-left: 1.3rem; display: grid; gap: .3rem; }
+.como-instalar .dica { margin: 0; }
+.dica-notificacoes { display: flex; align-items: center; gap: .9rem; flex-wrap: wrap; margin-bottom: 1.25rem; padding: .9rem 1.1rem; }
+.dica-notificacoes > div:not(.grupo-botoes) { flex: 1 1 220px; }
+.dica-notificacoes p { margin: 0; }
+.dica-notificacoes-icone { width: 42px; height: 42px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--cor-primaria-suave); color: var(--cor-primaria); }
+.dica-notificacoes .grupo-botoes { align-items: center; flex-wrap: nowrap; }
+
+/* ---------- Chat do Cinema ---------- */
+.cinema-baixo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); gap: 1.25rem; align-items: start; }
+.cinema-baixo > .controles-cinema { margin: 0; }
+@media (max-width: 1000px) { .cinema-baixo { grid-template-columns: 1fr; } }
+.chat-cinema { display: flex; flex-direction: column; gap: .6rem; padding: 1rem; min-height: 0; }
+.chat-topo { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .3rem .8rem; }
+.chat-topo .subtitulo { margin: 0; display: inline-flex; align-items: center; gap: .45rem; font-size: 1.05rem; }
+.chat-digitando { font-size: .82rem; color: var(--cor-texto-suave); font-style: italic; min-height: 1em; }
+.chat-mensagens { list-style: none; margin: 0; padding: .5rem .25rem; height: 340px; overflow-y: auto; display: flex; flex-direction: column; gap: .15rem; border-radius: var(--raio-pequeno); background: var(--cor-superficie-2); overscroll-behavior: contain; }
+.chat-mensagens:focus-visible { outline: 3px solid var(--cor-foco); outline-offset: 2px; }
+@media (max-width: 1000px) { .chat-mensagens { height: min(320px, 50vh); } }
+.chat-vazio { margin: auto; display: grid; justify-items: center; gap: .4rem; padding: 1rem; text-align: center; color: var(--cor-texto-suave); font-size: .9rem; }
+.chat-vazio .icone { width: 28px; height: 28px; }
+.chat-dia { align-self: center; margin: .6rem 0 .3rem; font-size: .75rem; font-weight: 700; color: var(--cor-texto-suave); }
+.chat-dia span { padding: .1rem .6rem; border-radius: 999px; background: var(--cor-superficie); }
+.msg { display: flex; flex-direction: column; max-width: 85%; margin-top: .45rem; }
+.msg.agrupada { margin-top: .1rem; }
+.msg.minha { align-self: flex-end; align-items: flex-end; }
+.msg.dele { align-self: flex-start; align-items: flex-start; }
+.msg-balao { padding: .45rem .75rem; border-radius: 14px; background: var(--cor-superficie); border: 1px solid var(--cor-borda); overflow-wrap: anywhere; display: grid; gap: .4rem; justify-items: start; }
+.msg-balao p { margin: 0; line-height: 1.4; }
+.msg.minha .msg-balao { background: var(--cor-primaria); color: var(--cor-sobre-primaria); border-color: transparent; border-bottom-right-radius: 4px; }
+.msg.dele .msg-balao { border-bottom-left-radius: 4px; }
+.msg.falhou .msg-balao { opacity: .65; }
+.msg-meta { margin: .15rem .2rem 0; display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; font-size: .74rem; color: var(--cor-texto-suave); }
+.msg-meta:empty { display: none; }
+.msg-tempo { display: inline-flex; align-items: center; gap: .2rem; min-height: 26px; padding: 0 .45rem; border-radius: 999px; border: 1px solid var(--cor-borda); background: var(--cor-superficie); color: var(--cor-link); font: inherit; font-weight: 700; cursor: pointer; }
+.msg-tempo .icone { width: 12px; height: 12px; }
+.msg-erro { color: var(--cor-erro); font-weight: 700; }
+.chat-novas { align-self: center; margin-top: -2.6rem; position: relative; z-index: 1; min-height: 34px; padding: .2rem .8rem; border-radius: 999px; border: 0; background: var(--cor-primaria); color: var(--cor-sobre-primaria); font: inherit; font-size: .82rem; font-weight: 700; cursor: pointer; box-shadow: var(--sombra); }
+.chat-novas .icone { transform: rotate(90deg); width: 14px; height: 14px; }
+.chat-aviso { margin: 0; }
+.chat-form { display: flex; gap: .5rem; }
+.chat-form .entrada { flex: 1; min-width: 0; }
+.botao-enviar-chat { flex: none; width: 48px; padding: 0; justify-content: center; }
+
+/* Mensagens do outro por cima do vídeo (aparecem também em tela cheia) */
+.chat-flutuante { position: absolute; left: .75rem; bottom: .75rem; z-index: 3; display: flex; flex-direction: column; align-items: flex-start; gap: .35rem; max-width: min(70%, 420px); pointer-events: none; }
+.chat-bolha { padding: .45rem .75rem; border-radius: 14px 14px 14px 4px; background: rgba(15, 8, 12, .82); color: #fff; font-size: .92rem; line-height: 1.35; box-shadow: 0 6px 18px rgba(0, 0, 0, .35); animation: bolha-entrar .3s ease-out; transition: opacity .4s, transform .4s; overflow-wrap: anywhere; }
+.chat-bolha strong { color: #ffb8cf; margin-right: .25rem; }
+.chat-bolha.saindo { opacity: 0; transform: translateY(-6px); }
+@keyframes bolha-entrar { from { opacity: 0; transform: translateY(8px); } }
+html[data-movimento="reduzir"] .chat-bolha { animation: none; }
+
+/* Campo de mensagem só aparece em tela cheia */
+.chat-rapido { display: none; }
+.tela-cheia:fullscreen .chat-rapido, .tela-cheia:-webkit-full-screen .chat-rapido { display: flex; gap: .5rem; padding: 0 .6rem .6rem; background: #0b0709; }
+.tela-cheia:fullscreen .chat-rapido .entrada, .tela-cheia:-webkit-full-screen .chat-rapido .entrada { flex: 1; min-width: 0; background: #1d1418; color: #fff; border-color: #3a2a30; }

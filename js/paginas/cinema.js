@@ -2,6 +2,7 @@
 //  - Sessão juntos: o que um perfil coloca/pausa/avança aparece na tela do outro (sala-cinema.js)
 //  - Reações (risada, tristeza, pipoca, susto) que flutuam na tela dos dois
 //  - Todo vídeo assistido fica salvo em "Sessões"; os preferidos ganham estrela em "Favoritos"
+//  - Chat do casal ao lado do vídeo (../chat-cinema.js)
 //  - O tempo com vídeo tocando vira Recompensas do Cinema (aba "Conquistas")
 // Respeita as regras de incorporação do YouTube: nada de download nem remoção de anúncios/controles.
 import { listar, salvar, remover, obterAjustes, salvarAjustes } from '../store/index.js';
@@ -13,6 +14,7 @@ import { esc, toast, confirmar, abrirModal, lerFormulario, marcarErro, limparErr
 import { temaAtual, aoMudarTema } from '../tema.js';
 import { somarTempoCinema, gravarTempoCinema, lerProgresso, carregarRecompensas } from '../recompensas.js';
 import { montarPainelConquistas } from '../conquistas.js';
+import { montarChat, MAX_MENSAGEM } from '../chat-cinema.js';
 
 export const REACOES = {
   risada: { emoji: '😂', nome: 'Risada' },
@@ -139,6 +141,7 @@ export async function renderizar(el, ctx) {
               </div>
               <div id="player-youtube" hidden></div>
               <div class="reacoes-voando" aria-hidden="true"></div>
+              <div class="chat-flutuante" aria-hidden="true"></div>
               <div class="tela-entrar" id="tela-entrar" hidden></div>
               <div class="tela-aviso" id="tela-aviso" role="alert" hidden></div>
             </div>
@@ -148,12 +151,18 @@ export async function renderizar(el, ctx) {
                   <span class="emoji" aria-hidden="true">${r.emoji}</span><span class="rotulo-reacao">${r.nome}</span>
                 </button>`).join('')}
             </div>
+            <form class="chat-rapido" data-chat-rapido novalidate>
+              <label for="chat-rapido-texto" class="sr-only">Mensagem para ${esc(outro.nome)}</label>
+              <input id="chat-rapido-texto" class="entrada" name="texto" maxlength="${MAX_MENSAGEM}" autocomplete="off" placeholder="Escreva para ${esc(outro.nome)}…">
+              <button type="submit" class="botao pequeno" aria-label="Enviar mensagem">${icone('enviar')}</button>
+            </form>
           </div>
         </div>
       </div>
       ${poltronas()}
     </section>
 
+    <div class="cinema-baixo">
     <section class="cartao controles-cinema" aria-labelledby="titulo-controles">
       <h2 id="titulo-controles" class="sr-only">Carregar vídeo</h2>
       <div class="sala-status" id="sala-status" aria-live="polite"></div>
@@ -178,6 +187,8 @@ export async function renderizar(el, ctx) {
         ${suportaTelaCheia ? '' : '<span class="dica">Tela cheia não é suportada neste navegador.</span>'}
       </div>
     </section>
+    <aside class="cartao chat-cinema" id="chat-cinema"></aside>
+    </div>
 
     <section class="secao-videos" aria-labelledby="titulo-videos">
       <h2 id="titulo-videos" class="sr-only">Vídeos e conquistas</h2>
@@ -422,13 +433,13 @@ export async function renderizar(el, ctx) {
     try { const salvo = await salvar('videos', doc); videos = videos.map((v) => (v.id === salvo.id ? salvo : v)); desenharVideos(); } catch { /* ignora */ }
   }
 
-  async function carregarLocal(id, titulo = '') {
+  async function carregarLocal(id, titulo = '', inicio = 0) {
     jaInteragiu = true;
     const salvo = videos.find((v) => v.youtubeId === id);
     const t = titulo || salvo?.titulo || '';
-    await mostrarVideo(id, t, { inicio: 0, tocar: true });
-    if (podeSincronizar()) sala.enviar('carregar', { youtubeId: id, titulo: t, tocando: true, posicao: 0 });
-    if (juntosLigado) persistirSala({ youtubeId: id, titulo: t, tocando: true, posicao: 0 });
+    await mostrarVideo(id, t, { inicio, tocar: true });
+    if (podeSincronizar()) sala.enviar('carregar', { youtubeId: id, titulo: t, tocando: true, posicao: inicio });
+    if (juntosLigado) persistirSala({ youtubeId: id, titulo: t, tocando: true, posicao: inicio });
     registrarSessao(id, t);
     tela.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
@@ -605,6 +616,30 @@ export async function renderizar(el, ctx) {
   const gravarAoSair = () => { gravarTempoCinema(); };
   window.addEventListener('pagehide', gravarAoSair);
 
+  // ---------------- Chat ----------------
+  const chat = montarChat({
+    painel: el.querySelector('#chat-cinema'),
+    flutuante: el.querySelector('.chat-flutuante'),
+    formRapido: el.querySelector('[data-chat-rapido]'),
+    perfil: ctx.perfil,
+    sala,
+    extrairId: extrairIdYoutube,
+    contexto: () => (videoAtual ? { youtubeId: videoAtual.youtubeId, titulo: videoAtual.titulo, posicao: tempoAtual() } : null),
+    aoPular: async (yt, posicao, titulo) => {
+      if (videoAtual?.youtubeId === yt && usandoApi && player?.seekTo) {
+        jaInteragiu = true;
+        await playerPronto;
+        player.seekTo(posicao, true);
+        setTimeout(() => enviarEstado(tocandoAgora()), 300);
+        tela.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else {
+        carregarLocal(yt, titulo, posicao);
+      }
+    },
+    aoAssistir: (id) => carregarLocal(id),
+  });
+  if (/[?&]chat\b/.test(location.hash)) setTimeout(() => chat.focar(), 300);
+
   // ---------------- Eventos ----------------
   form.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -726,6 +761,7 @@ export async function renderizar(el, ctx) {
     pararStatus();
     clearTimeout(timerPersistir);
     clearInterval(relogioCinema);
+    chat.limpar();
     window.removeEventListener('nc:recompensas-mudou', aoMudarRecompensas);
     window.removeEventListener('pagehide', gravarAoSair);
     limparPainel?.();

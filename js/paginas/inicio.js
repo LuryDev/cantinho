@@ -3,6 +3,7 @@ import { listar, obterAjustes, salvarAjustes, enviarImagem } from '../store/inde
 import { icone } from '../ui/icones.js';
 import { adesivo, cenaCasal } from '../ui/ilustracoes.js';
 import { esc, toast, confirmar, formatarData, seloExemplo, hojeISO, abrirModal, lerFormulario } from '../ui/dom.js';
+import { montarDicaNotificacoes } from '../painel-notificacoes.js';
 import { PERFIS } from '../auth.js';
 import { normalizarJuntos, comecarJuntos, encerrarJuntos, cancelarJuntos, removerEncontro, lerJuntos, tempoAtualMs, relogio, duracaoPorExtenso } from '../juntos.js';
 import { cartaVisivelPara } from './cartinhas.js';
@@ -282,6 +283,8 @@ export async function renderizar(el, ctx) {
           ${icone('direita')}
         </a>` : ''}
 
+      <div data-dica-notificacoes></div>
+
       <section class="juntos cartao ${juntos.ativoDesde ? 'ativo' : ''}" aria-labelledby="titulo-juntos">
         <h2 id="titulo-juntos">Estamos juntos?</h2>
         <div id="juntos-corpo">${htmlJuntos()}</div>
@@ -340,6 +343,7 @@ export async function renderizar(el, ctx) {
             <a class="botao pequeno" href="#/cartinhas?nova">${icone('carta')} Escrever a primeira</a>`}
         </section>
       </div>`;
+    montarDicaNotificacoes(el.querySelector('[data-dica-notificacoes]'), ctx.perfil);
   }
 
   function editarData() {

@@ -5,6 +5,7 @@ import { esc, toast, confirmar } from '../ui/dom.js';
 import { TEMAS, temaAtual, aplicarTema, lerPreferencias, salvarPreferencias } from '../tema.js';
 import { salvarTemaRemoto } from '../auth.js';
 import { storeAtual } from '../store/index.js';
+import { montarPainelNotificacoes } from '../painel-notificacoes.js';
 
 const PREVIA = {
   neutro: ['coracao', 'flor', 'brilho'],
@@ -79,6 +80,11 @@ export async function renderizar(el, ctx) {
       </fieldset>
     </section>
 
+    <section class="cartao" aria-labelledby="titulo-notificacoes" id="notificacoes">
+      <h2 id="titulo-notificacoes">Notificações e app no celular</h2>
+      <div data-painel-notificacoes></div>
+    </section>
+
     <section class="cartao" aria-labelledby="titulo-dados">
       <h2 id="titulo-dados">Conta e dados</h2>
       <p><strong>Perfil:</strong> ${esc(perfil.nome)} · <strong>Modo:</strong> ${ctx.modo === 'demo' ? 'demonstração (sem autenticação real)' : 'Supabase (login real)'}</p>
@@ -122,4 +128,6 @@ export async function renderizar(el, ctx) {
       ctx.irPara('inicio');
     }
   });
+
+  return montarPainelNotificacoes(el.querySelector('[data-painel-notificacoes]'), perfil);
 }

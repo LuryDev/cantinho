@@ -10,6 +10,7 @@ import { definirStore, storeAtual, listar, obterAjustes, salvarAjustes } from '.
 import { lerJuntos, normalizarJuntos, tempoAtualMs, relogio } from './juntos.js';
 import { iniciarSala, encerrarSala } from './sala-cinema.js';
 import { criarStoreLocal } from './store/local.js';
+import { registrarServiceWorker, sincronizarNotificacoes, esquecerPerfilNotificacoes, estadoNotificacoes } from './notificacoes.js';
 import { carregarRecompensas, verificarConquistas, aplicarEstilosNome, gravarTempoCinema, esperarGravacao, limparCacheRecompensas } from './recompensas.js';
 
 export const ROTAS = [
@@ -35,6 +36,7 @@ const midiaCelular = window.matchMedia('(max-width: 920px)');
 // ------------------------------------------------------------------
 async function iniciar() {
   injetarSpriteIcones();
+  registrarServiceWorker();
   aplicarPreferencias(lerPreferencias(null));
   const auth = await iniciarAuth();
   document.getElementById('carregando').hidden = true;
@@ -68,6 +70,14 @@ async function abrirApp(perfil, { primeiraEntrada, animar }) {
   const sala = iniciarSala(perfil, { modo: modoAuth(), cliente: clienteSupabase() });
   sala.ouvir((msg) => {
     if (msg.tipo === 'aviso') { receberAviso(msg); return; }
+    if (msg.tipo === 'chat' && msg.texto && rotaDoHash().id !== 'cinema') {
+      const texto = String(msg.texto);
+      toast(`${PERFIS[msg.de]?.nome || 'Alguém'} no chat do cinema: "${texto.length > 80 ? `${texto.slice(0, 80)}…` : texto}"`, 'info', {
+        acao: { texto: 'Responder', executar: () => { location.hash = '#/cinema?chat'; } },
+        duracao: 9000,
+      });
+      return;
+    }
     if (msg.tipo !== 'carregar' || rotaDoHash().id === 'cinema') return;
     toast(`${PERFIS[msg.de]?.nome || 'Alguém'} colocou "${msg.titulo || 'um vídeo'}" no cinema.`, 'info', {
       acao: { texto: 'Assistir junto', executar: () => { location.hash = '#/cinema'; } },
@@ -80,6 +90,7 @@ async function abrirApp(perfil, { primeiraEntrada, animar }) {
   aplicarTema(tema, { perfil: perfil.id });
 
   montarEstrutura(perfil);
+  sincronizarNotificacoes(perfil);
   const recompensas = carregarRecompensas().catch(() => null);
   const animacao = animar ? escolherAnimacao(perfil) : null;
 
@@ -98,6 +109,12 @@ async function abrirApp(perfil, { primeiraEntrada, animar }) {
   }
   await recompensas;
   comemorarNovidades();
+}
+
+async function removerAparelhoDaConta() {
+  const reg = await navigator.serviceWorker?.getRegistration('/');
+  const inscricao = await reg?.pushManager.getSubscription();
+  if (inscricao) await clienteSupabase().from('push_inscricoes').delete().eq('endpoint', inscricao.endpoint);
 }
 
 /** Cartinha, elogio ou lembrete que o outro perfil acabou de enviar (site aberto). */
@@ -309,6 +326,9 @@ async function encerrarSessao() {
   encerrarSala();
   try { await gravarTempoCinema(); await esperarGravacao(); } catch { /* sem conexão: tudo bem */ }
   limparCacheRecompensas();
+  // Ao sair, este aparelho para de receber avisos desta conta (volta ao entrar de novo)
+  try { if (await estadoNotificacoes() === 'ativo') await removerAparelhoDaConta(); } catch { /* sem conexão: tudo bem */ }
+  esquecerPerfilNotificacoes();
   try { await sair(); } catch (e) { console.warn(e); }
   perfilAtual = null;
   const shell = document.getElementById('app-shell');

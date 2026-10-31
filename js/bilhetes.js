@@ -3,6 +3,7 @@
 // Quando o outro perfil está com o site aberto, recebe um aviso na hora pela sala do casal.
 import { salvar } from './store/index.js';
 import { salaAtual } from './sala-cinema.js';
+import { notificarOutro } from './notificacoes.js';
 import { PERFIS } from './auth.js';
 import { icone } from './ui/icones.js';
 import { esc, toast, abrirModal, marcarErro, limparErros } from './ui/dom.js';
@@ -82,11 +83,19 @@ export function htmlBilhete(c, { compacto = false } = {}) {
     </div>`;
 }
 
-/** Avisa o outro perfil na hora, se ele estiver com o site aberto. */
+/**
+ * Avisa o outro perfil: na hora, se ele estiver com o site aberto;
+ * e por notificação no celular, se ele não estiver olhando o site.
+ */
 export function avisarOutro(c) {
   try {
     salaAtual()?.enviar?.('aviso', { id: c.id, para: c.para, tipoCarta: c.tipo || 'carta', texto: c.mensagem?.slice(0, 140) || '', emoji: c.emoji || '' });
   } catch { /* sem sala: o aviso aparece quando abrir o site */ }
+  const de = nomeDe(c.de);
+  const url = `/#/cartinhas?abrir=${encodeURIComponent(c.id)}`;
+  if (c.tipo === 'elogio') notificarOutro({ titulo: `${de} te mandou um elogio`, corpo: c.mensagem, url });
+  else if (c.tipo === 'lembrete') notificarOutro({ titulo: `${de} lembrou de você`, corpo: `${c.emoji || ''} ${c.mensagem}`.trim(), url });
+  else notificarOutro({ titulo: `Chegou uma cartinha de ${de}`, corpo: 'Toque para abrir o envelope.', url });
 }
 
 async function enviarBilhete(doc, perfil) {

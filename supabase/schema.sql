@@ -78,7 +78,7 @@ do $$
 declare
   t text;
 begin
-  foreach t in array array['cartas', 'listas', 'filmes', 'videos', 'memorias'] loop
+  foreach t in array array['cartas', 'listas', 'filmes', 'videos', 'memorias', 'mensagens'] loop
     execute format($f$
       create table if not exists public.%1$I (
         id             uuid primary key default gen_random_uuid(),
@@ -140,6 +140,46 @@ drop policy if exists "casal envia na sala do cinema" on realtime.messages;
 create policy "casal envia na sala do cinema" on realtime.messages
   for insert to authenticated
   with check (realtime.topic() = 'cinema:' || public.meu_casal()::text);
+
+-- ---------- Notificações no celular (Web Push) ----------
+create table if not exists public.push_inscricoes (
+  id          uuid primary key default gen_random_uuid(),
+  casal_id    uuid not null default public.meu_casal() references public.casais (id) on delete cascade,
+  user_id     uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  perfil      text not null check (perfil in ('manu', 'lury')),
+  endpoint    text not null unique check (endpoint like 'https://%'),
+  p256dh      text not null,
+  auth        text not null,
+  aparelho    text,
+  criado_em   timestamptz not null default now()
+);
+
+create index if not exists push_inscricoes_casal_perfil on public.push_inscricoes (casal_id, perfil);
+
+alter table public.push_inscricoes enable row level security;
+
+grant select, insert, delete on public.push_inscricoes to authenticated;
+
+drop policy if exists "casal ve inscricoes" on public.push_inscricoes;
+create policy "casal ve inscricoes" on public.push_inscricoes
+  for select to authenticated
+  using (casal_id = public.meu_casal());
+
+-- Só dá para cadastrar o PRÓPRIO aparelho, com o PRÓPRIO perfil
+drop policy if exists "cada um inscreve o proprio aparelho" on public.push_inscricoes;
+create policy "cada um inscreve o proprio aparelho" on public.push_inscricoes
+  for insert to authenticated
+  with check (
+    casal_id = public.meu_casal()
+    and user_id = auth.uid()
+    and perfil = (select p.nome from public.perfis p where p.user_id = auth.uid())
+  );
+
+-- Qualquer um do casal pode remover (limpa aparelhos trocados de conta ou desativados)
+drop policy if exists "casal remove inscricoes" on public.push_inscricoes;
+create policy "casal remove inscricoes" on public.push_inscricoes
+  for delete to authenticated
+  using (casal_id = public.meu_casal());
 
 -- =====================================================================
 -- PRÓXIMO PASSO: crie as contas da Manu e do Lury em Authentication > Users

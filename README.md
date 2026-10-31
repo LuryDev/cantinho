@@ -32,10 +32,13 @@ python3 -m http.server 5173
 ```
 nosso-cantinho/
 ├── index.html              # Página única; carrega CSS, config.js e js/app.js
+├── manifest.webmanifest    # Dados do app instalável (nome, ícones, atalhos)
+├── sw.js                   # Service worker: mostra as notificações
+├── scripts/                # gerar-chaves-notificacao.mjs (npm run chaves)
 ├── config.exemplo.js       # Modelo da config pública (o /config.js real é gerado pelo servidor/Vercel)
 ├── servidor-local.mjs              # Servidor local sem dependências + proxy do TMDB
-├── api/                    # Funções da Vercel: config.js e tmdb/search.js
-├── lib/                    # Lógica compartilhada (config pública e TMDB) entre servidor-local.mjs e api/
+├── api/                    # Funções da Vercel: config.js, tmdb/search.js e notificar.js
+├── lib/                    # Lógica compartilhada (config pública, TMDB e notificações) entre servidor-local.mjs e api/
 ├── vercel.json             # Vercel: /config.js → função api/config
 ├── package.json            # Só o script "start"
 ├── .env.example            # Modelo do arquivo de ambiente
@@ -53,6 +56,9 @@ nosso-cantinho/
 │   ├── boas-vindas.js      # Animação de boas-vindas (pulável, respeita movimento reduzido)
 │   ├── tema.js             # Troca de tema e preferências visuais
 │   ├── config.js           # Lê a config pública
+│   ├── notificacoes.js     # Service worker, ativar/desativar e enviar notificações
+│   ├── painel-notificacoes.js # Painel em Aparência e convite no Início
+│   ├── chat-cinema.js      # Chat do Cinema (mensagens, digitando, histórico)
 │   ├── bilhetes.js         # Enviar elogio e Lembre de mim (frases, emojis, envio e aviso)
 │   ├── recompensas.js      # As 14 recompensas do cinema + contagem do tempo (dados)
 │   ├── conquistas.js       # Painel de conquistas, comemoração e colecionáveis (tela)
@@ -68,7 +74,7 @@ nosso-cantinho/
 │   │   └── cinemateca.js  cinema.js  memorias.js  aparencia.js
 │   └── ui/                 # Ícones, ilustrações SVG, toasts, modais, utilitários
 ├── assets/                 # Favicon e ilustrações de exemplo da galeria
-└── supabase/schema.sql     # Tabelas, políticas RLS e bucket de fotos
+└── supabase/schema.sql     # Tabelas, políticas RLS e bucket de fotos (notificacoes.sql: só a parte nova)
 ```
 
 ---
@@ -85,10 +91,12 @@ nosso-cantinho/
 | **Estamos juntos?** | Um botão liga um cronômetro compartilhado: os dois perfis veem o mesmo tempo correndo (também no topo de todas as páginas). Ao encerrar, dá para anotar "como foi" e corrigir o horário de término. Guarda o total juntos, número de encontros, o maior encontro e o histórico (com exclusão). Embaixo aparece uma **curiosidade** comparando o tempo com recordes e fatos (ex.: "Nossa! Vocês ficaram 30 minutos juntos — praticamente o mesmo tempo que o recorde de alguém que ficou embaixo d’água sem respirar"), com a fonte. Os fatos foram pesquisados na web e ficam em `js/curiosidades.js` (fácil de atualizar). |
 | **Cartinhas** | **Enviar para o outro perfil** ou guardar como rascunho. Abas Recebidas / Enviadas / Rascunhos; cartinha nova chega num envelope fechado com selo de cera que se abre ao clicar, contador de novas no menu, "lida em…" para quem enviou e botão **Responder**. Rascunhos não aparecem para o outro perfil. Editor com título, como chamar (opcional), data e mensagem; papel (6), cor do papel, cor da tinta, fonte (6), alinhamento, moldura (4) e até 6 enfeites dos três temas. Prévia ao vivo e em tamanho grande. Coleção com abrir, editar e excluir (com confirmação). |
 | **Elogio e Lembre de mim** | Dois bilhetes rápidos no topo de Cartinhas. **Enviar elogio**: uma ou duas frases (até 180 caracteres), com sugestões e 4 cores de bilhete. **Lembre de mim**: escolher um de 12 emojis e uma de 18 frases prontas ("Ei, esqueceu de mim?", "Estou com saudades, amor!"…; "Ei, sumida/sumido!" ajusta para quem recebe). Chegam em **Recebidas** como bilhete dobrado, quem enviou vê se já foi visto, e dá para responder com outro elogio ou lembrete. Se a outra pessoa estiver com o site aberto, recebe um aviso na hora (cartinhas normais também); se não, vê o contador e o aviso no Início quando entrar. Ficam salvos na mesma tabela das cartinhas (sem SQL novo). As frases ficam em `js/bilhetes.js`. |
+| **Notificações e app** | O site pode ser instalado no celular (ícone, tela cheia, atalhos ao segurar o ícone). Com o login real, cada um ativa as notificações em **Aparência** e recebe aviso de cartinha, elogio e "Lembre de mim" mesmo com o site fechado; tocar na notificação abre direto o que chegou. No Início aparece um convite discreto para ativar. Configuração na seção 6.2. |
 | **Listas** | Compartilhadas entre os dois, mostrando quem criou a lista, quem adicionou cada item e quem concluiu. Estilo por lista: cor (8), papel (simples, caderno, post-it, quadriculado, kraft) e adesivo. Criar/renomear/excluir listas com descrição e categoria (6 sugeridas + personalizada); adicionar, editar, concluir e excluir itens (com "Desfazer"); barra de progresso; filtro por categoria. |
 | **Cinemateca** | Pesquisa no TMDB com pôsteres (quando configurado), cadastro manual sempre disponível, abas Queremos assistir / Assistindo / Assistidos, detalhes com observações, mudança de status, remoção e bloqueio de duplicatas. |
 | **Cinema** | Sala com letreiro, cortinas, moldura e poltronas (muda com o tema). **Assistir junto:** quem coloca um vídeo, dá play, pausa ou avança faz o mesmo acontecer na tela do outro, sem colar link (Realtime do Supabase; no modo demonstração, entre abas do mesmo navegador). Mostra se o outro está na sala; quem está fora do Cinema recebe aviso "Assistir junto". **Reações** 😂 😢 🍿 😱 que sobem na tela dos dois (inclusive em tela cheia) e ficam contadas por vídeo. Todo vídeo carregado é salvo em **Sessões** (quantas vezes, quando, por quem, se foi junto) e pode ganhar estrela em **Favoritos**. Vídeos que não permitem incorporação mostram aviso + link para o YouTube. |
 | **Recompensas do Cinema** | O tempo com vídeo tocando no Cinema é somado para o casal (assistindo juntos, conta uma vez só) e libera **14 recompensas** em ciclos de uma hora: aos **15 min** uma pequena (**colecionável**), aos **30 min** uma média (**visual do site**: estilo de nome ou modo da sala) e na **hora cheia** uma grande (**foto de recordação**). Colecionáveis: ingresso dourado, balde de pipoca, claquete, rolo de filme e troféu. Visuais: nome cromado, nome neon e nome em letreiro (cada um escolhe o seu, aparece no topo e na saudação) e os modos **noir** e **Sala VIP** da sala (valem para os dois). Fotos: polaroid, cartaz do casal, tira de cabine e estrela de cinema, geradas no próprio navegador com o tempo, os vídeos mais vistos, as reações e a foto do casal, prontas para **baixar** ou **compartilhar**. Ao desbloquear aparece uma comemoração (se o vídeo estiver tocando, ela espera a pausa); quem não estava junto vê a comemoração quando entrar. Tudo fica na aba **Conquistas** do Cinema. Os limites ficam em `js/recompensas.js`. |
+| **Chat do Cinema** | Conversa do casal ao lado do vídeo (embaixo, no celular). As mensagens chegam na hora; mostra "digitando…", separa por dia e guarda o histórico (últimas 150) na tabela `mensagens`. Cada mensagem marca o ponto do vídeo em que foi escrita ("aos 12:34"): tocar leva os dois para aquele ponto. Link do YouTube no chat vira botão **Colocar na tela**. Mensagens do outro aparecem por cima do vídeo, e em tela cheia aparece um campo para responder sem sair. Fora do Cinema chega um aviso com **Responder**; com o site fechado, uma notificação no celular (no máximo uma a cada 45 s), se estiverem ativadas. |
 | **Memórias** | Galeria (polaroid no tema Manu, moldura gótica no Lury), visualização ampliada com setas, envio de foto ou URL, legenda e data opcionais. |
 | **Aparência** | Cartões de tema com prévia, "ao entrar usar o tema do perfil / o último escolhido", reduzir movimento, decoração discreta, texto maior e (no modo local) restaurar exemplos ou apagar dados. |
 
@@ -119,6 +127,7 @@ Enquanto o Supabase **não** estiver configurado:
    O login no site é só por **nome + senha**: quem digita "Manu" entra com `manu@nossocantinho.app`. Nenhum e-mail é enviado para esses endereços. Para usar outro domínio, defina `LOGIN_DOMINIO` no `.env`/Vercel e crie as contas com ele.
 4. **Authentication → Sign In / Providers → Email**: desligue *Allow new users to sign up*, para ninguém mais criar conta.
 5. *(Para "Assistir junto" no Cinema)* No **SQL Editor**, rode também `supabase/cinema-juntos.sql`. Quem rodou o `schema.sql` depois de 31/10/2026 já tem isso.
+6. *(Para guardar o histórico do chat do Cinema)* No **SQL Editor**, rode `supabase/chat-cinema.sql`. Sem ele o chat funciona na hora, mas as mensagens não ficam salvas.
 6. No **SQL Editor**, abra uma query nova, cole `supabase/vincular-contas.sql` e rode. Ele já vem com os e-mails internos acima (só mude se trocou o domínio). Pode rodar de novo sem duplicar nada; no fim ele lista as duas contas vinculadas.
 7. **Project Settings → API**: copie a *Project URL* e a chave **anon public**.
 8. Copie `.env.example` para `.env` e preencha:
@@ -163,9 +172,35 @@ O `.gitignore` já impede o envio do `.env`. Confira com `git status` antes do p
 **Vercel**
 1. vercel.com → **Add New → Project** → importe o repositório.
 2. *Framework Preset*: **Other**. Deixe *Build Command* e *Output Directory* vazios.
-3. Em **Environment Variables**, adicione as que for usar: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `TMDB_READ_TOKEN` (ou `TMDB_API_KEY`).
+3. Em **Environment Variables**, adicione as que for usar: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `TMDB_READ_TOKEN` (ou `TMDB_API_KEY`) e, para notificações, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` e `VAPID_SUBJECT` (seção 6.2).
 4. **Deploy**. Se adicionar ou mudar variáveis depois, faça **Redeploy**: elas só valem a partir do deploy seguinte.
 5. Com Supabase: em *Authentication → URL Configuration*, coloque o endereço da Vercel como *Site URL*.
+
+## 6.2 Notificações no celular (opcional)
+
+Com isso, quando um manda **cartinha, elogio ou "Lembre de mim"**, o celular do outro recebe uma notificação, mesmo com o site fechado. Se a pessoa estiver com o site aberto na tela, aparece só o aviso dentro do site.
+
+**1. Banco (uma vez).** No Supabase → *SQL Editor*, rode `supabase/notificacoes.sql`.
+
+**2. Chaves (uma vez).** No seu computador, dentro da pasta do projeto:
+```bash
+npm install
+npm run chaves
+```
+Aparecem 3 linhas (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`). Cole no `.env` e também na Vercel (*Settings → Environment Variables*, marcando Production e Preview). Depois faça **Redeploy**. A chave privada é secreta: só no `.env` e na Vercel, nunca no GitHub.
+
+**3. Em cada celular.**
+- **iPhone (iOS 16.4 ou mais novo):** Safari → *Compartilhar* → *Adicionar à Tela de Início*. Abra o **Cantinho** pelo ícone, entre na conta e vá em **Aparência → Ativar notificações**. A Apple só libera notificações para sites instalados assim. O app instalado guarda o login separado do Safari, então é preciso entrar de novo nele.
+- **Android:** no Chrome, **Aparência → Ativar notificações** (funciona direto). Para ter o ícone e os atalhos, use o menu ⋮ → *Instalar app*.
+- **Computador:** Chrome ou Edge, **Aparência → Ativar notificações**.
+
+Em **Aparência** tem o botão **Enviar um teste**, que manda uma notificação para os seus próprios aparelhos.
+
+**Como funciona por dentro.** `sw.js` (service worker) recebe e mostra as notificações. `js/notificacoes.js` guarda cada aparelho na tabela `push_inscricoes`. Ao enviar algo, o site chama `api/notificar.js`, que confere o login de quem enviou, busca os aparelhos do outro perfil (as regras do banco só deixam ver os do próprio casal) e entrega pelo serviço de push do navegador (pacote `web-push`). Nenhuma chave secreta do Supabase é usada. Ao **sair da conta**, o aparelho para de receber avisos daquela conta.
+
+**Instalar como app** (`manifest.webmanifest`) também dá o ícone na tela inicial, abertura em tela cheia e atalhos ao segurar o ícone: **Lembre de mim**, **Elogio**, **Cinema** e **Cartinhas**.
+
+---
 
 **Importante:** sem o Supabase, o site publicado fica em **modo demonstração**: qualquer pessoa com o link pode "entrar como Manu ou Lury". Os dados não vazam (cada visitante só vê o que está no próprio navegador), mas o espaço **não é privado**. Configure o Supabase antes de guardar coisas pessoais no site publicado.
 
@@ -224,11 +259,13 @@ Marque cada item depois de testar (use uma janela anônima para começar do zero
 - [ ] **Início:** definir a data real no contador; adicionar e remover a foto do casal.
 - [ ] **Cartinhas:** criar com papel/fonte/moldura/enfeites, ver a prévia grande, salvar, abrir, editar e excluir.
 - [ ] **Elogio e Lembre de mim:** abrir duas abas (uma como Manu, outra como Lury). Enviar um elogio com três frases → recusa; com uma frase → a outra aba recebe o aviso na hora; **Ver** abre o bilhete e marca como visto. Responder com **Lembre de mim** escolhendo emoji e frase → chega na outra aba.
+- [ ] **Notificações (com Supabase e chaves configuradas):** em Aparência, **Ativar notificações** → **Enviar um teste** → a notificação chega. No outro celular, mande um elogio com o site do primeiro fechado → chega a notificação; tocar nela abre o elogio. Com o site aberto na tela, aparece só o aviso dentro do site. **Sair da conta** → não chegam mais avisos naquele aparelho.
 - [ ] **Listas:** criar lista com categoria personalizada, adicionar 3 itens, concluir 1 (progresso 1 de 3), editar um item, excluir e desfazer, renomear e excluir a lista.
 - [ ] **Cinemateca sem chave:** aparece o aviso de configuração; cadastrar filme manual; tentar duplicar (bloqueia); mudar status; observações; remover.
 - [ ] **Cinemateca com chave:** pesquisar "Amélie" → resultados reais com pôster → adicionar → aparece "Na coleção".
 - [ ] **Cinema:** colar um link do YouTube → toca na tela; salvar nos favoritos; renomear; tocar pelo favorito; tela cheia. Testar um vídeo com incorporação bloqueada → aviso amigável com link.
 - [ ] **Recompensas:** tocar um vídeo por alguns segundos e pausar → a aba **Conquistas** mostra o tempo. Para testar rápido no modo demonstração, no console: `a=JSON.parse(localStorage['nc:v1:ajustes']); a.cinemaMs_lury=65*60000; localStorage['nc:v1:ajustes']=JSON.stringify(a)` e atualizar → comemoração da Polaroid; gerar e baixar a foto; usar o nome cromado; ativar o modo noir quando chegar a 1 h 30.
+- [ ] **Chat do Cinema:** duas abas (Manu e Lury). Com o Lury fora do Cinema, a Manu manda mensagem → aviso **Responder** abre o chat. Digitar → aparece "digitando…". Mandar um link do YouTube → **Colocar na tela** toca para os dois. Com vídeo tocando, a mensagem aparece por cima do vídeo e o botão "aos …" leva até aquele ponto. Recarregar → histórico continua.
 - [ ] **Memórias:** abrir a visualização ampliada, navegar com as setas, enviar uma foto com legenda e data, editar e excluir.
 - [ ] **Aparência:** trocar tema pelos cartões; decoração discreta; texto maior; restaurar exemplos.
 - [ ] Navegar só com teclado (Tab/Enter/Esc): o foco é sempre visível.

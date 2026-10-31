@@ -8,6 +8,7 @@
 // É um único canal para o site todo (aberto ao entrar, fechado ao sair).
 
 let sala = null;
+const estouVendo = () => document.visibilityState === 'visible';
 
 function criarBase(perfil) {
   const ouvintes = new Set();
@@ -17,6 +18,7 @@ function criarBase(perfil) {
     status: 'indisponivel', // conectando | ok | erro | indisponivel
     erro: '',
     presentes: new Set(), // perfis (manu/lury) com a sala aberta, além de mim
+    vendo: new Set(),     // dos presentes, quem está com o site visível na tela agora
     perfil,
     enviar() {},
     ouvir(fn) { ouvintes.add(fn); return () => ouvintes.delete(fn); },
@@ -46,13 +48,14 @@ function salaSupabase(perfil, cliente) {
     canal.on('presence', { event: 'sync' }, () => {
       const estado = canal.presenceState();
       s.presentes = new Set(Object.keys(estado).filter((k) => k !== perfil.id));
+      s.vendo = new Set([...s.presentes].filter((k) => (estado[k] || []).some((m) => m.visivel !== false)));
       s._mudou();
     });
     canal.subscribe(async (status, err) => {
       if (status === 'SUBSCRIBED') {
         s.status = 'ok';
         s.erro = '';
-        try { await canal.track({ perfil: perfil.id, desde: Date.now() }); } catch { /* presença é opcional */ }
+        try { await canal.track({ perfil: perfil.id, desde: Date.now(), visivel: estouVendo() }); } catch { /* presença é opcional */ }
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         s.status = 'erro';
         s.erro = 'Não foi possível abrir a sala compartilhada. Confira se o arquivo supabase/cinema-juntos.sql foi executado.';
@@ -69,7 +72,15 @@ function salaSupabase(perfil, cliente) {
     canal.send({ type: 'broadcast', event: 'cinema', payload: { ...dados, tipo, de: perfil.id, em: Date.now() } });
     return true;
   };
-  s.fechar = () => { if (canal) cliente.removeChannel(canal); canal = null; };
+  const aoMudarVisibilidade = () => {
+    if (canal && s.status === 'ok') canal.track({ perfil: perfil.id, desde: Date.now(), visivel: estouVendo() }).catch(() => {});
+  };
+  document.addEventListener('visibilitychange', aoMudarVisibilidade);
+  s.fechar = () => {
+    document.removeEventListener('visibilitychange', aoMudarVisibilidade);
+    if (canal) cliente.removeChannel(canal);
+    canal = null;
+  };
   return s;
 }
 
@@ -88,13 +99,14 @@ function salaLocal(perfil) {
     const novos = new Set([...vistos.values()].map((v) => v.perfil));
     const mudou = novos.size !== s.presentes.size || [...novos].some((p) => !s.presentes.has(p));
     s.presentes = novos;
+    s.vendo = new Set([...vistos.values()].filter((v) => v.visivel !== false).map((v) => v.perfil));
     if (mudou) s._mudou();
   };
   canal.onmessage = ({ data }) => {
     if (!data || data.aba === aba) return;
-    vistos.set(data.aba, { perfil: data.de, quando: Date.now() });
+    vistos.set(data.aba, { perfil: data.de, quando: Date.now(), visivel: data.tipo === 'oi' ? data.visivel : (vistos.get(data.aba)?.visivel ?? true) });
     if (data.tipo === 'oi') {
-      if (data.pergunta) canal.postMessage({ tipo: 'oi', de: perfil.id, aba, em: Date.now() });
+      if (data.pergunta) canal.postMessage({ tipo: 'oi', de: perfil.id, aba, em: Date.now(), visivel: estouVendo() });
       atualizarPresenca();
       return;
     }
@@ -102,7 +114,9 @@ function salaLocal(perfil) {
     atualizarPresenca();
     s._emitir(data);
   };
-  const oi = (pergunta = false) => canal.postMessage({ tipo: 'oi', pergunta, de: perfil.id, aba, em: Date.now() });
+  const oi = (pergunta = false) => canal.postMessage({ tipo: 'oi', pergunta, de: perfil.id, aba, em: Date.now(), visivel: estouVendo() });
+  const aoMudarVisibilidade = () => oi();
+  document.addEventListener('visibilitychange', aoMudarVisibilidade);
   oi(true);
   const batimento = setInterval(() => { oi(); atualizarPresenca(); }, 5000);
 
@@ -112,6 +126,7 @@ function salaLocal(perfil) {
   };
   s.fechar = () => {
     clearInterval(batimento);
+    document.removeEventListener('visibilitychange', aoMudarVisibilidade);
     try { canal.postMessage({ tipo: 'tchau', de: perfil.id, aba }); } catch { /* ignora */ }
     canal.close();
   };
