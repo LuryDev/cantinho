@@ -6,6 +6,7 @@ import { esc, toast, confirmar, formatarData, seloExemplo, hojeISO, abrirModal, 
 import { PERFIS } from '../auth.js';
 import { normalizarJuntos, comecarJuntos, encerrarJuntos, cancelarJuntos, removerEncontro, lerJuntos, tempoAtualMs, relogio, duracaoPorExtenso } from '../juntos.js';
 import { cartaVisivelPara } from './cartinhas.js';
+import { mensagemCuriosa } from '../curiosidades.js';
 import { temaAtual, aoMudarTema } from '../tema.js';
 import { htmlCarta } from './carta-visual.js';
 
@@ -56,6 +57,20 @@ export async function renderizar(el, ctx) {
   const nomePerfil = (id) => PERFIS[id]?.nome || '';
   const hora = (iso) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
+  /** Curiosidade do encontro atual (ao vivo) ou do último encontro. */
+  function htmlCuriosidade() {
+    const j = juntos;
+    const base = j.ativoDesde
+      ? { ms: tempoAtualMs(j), chave: j.ativoDesde, prefixo: 'Até agora' }
+      : (j.encontros[0] ? { ms: j.encontros[0].duracaoMs, chave: j.encontros[0].id, prefixo: 'No último encontro' } : null);
+    if (!base) return '';
+    const m = mensagemCuriosa(base.ms, base.chave);
+    if (!m) return '';
+    return `
+      <p class="juntos-curiosidade"><span class="rotulo-curiosidade">${base.prefixo}</span> ${esc(m.texto)}
+        <a class="fonte-curiosidade" href="${esc(m.fonte.url)}" target="_blank" rel="noopener noreferrer">Fonte: ${esc(m.fonte.nome)}</a></p>`;
+  }
+
   function htmlJuntos() {
     const j = juntos;
     const maior = j.encontros.reduce((m, e) => Math.max(m, Number(e.duracaoMs) || 0), 0);
@@ -65,6 +80,7 @@ export async function renderizar(el, ctx) {
         <div><dt>Encontros</dt><dd>${j.encontros.length}</dd></div>
         <div><dt>Maior encontro</dt><dd>${maior ? duracaoPorExtenso(maior) : '—'}</dd></div>
       </dl>
+      <div data-curiosidade>${htmlCuriosidade()}</div>
       ${j.encontros.length ? `<button type="button" class="botao-fantasma pequeno" data-historico-juntos>${icone('calendario')} Ver nossos encontros</button>` : ''}`;
     if (j.ativoDesde) {
       return `
@@ -423,6 +439,11 @@ export async function renderizar(el, ctx) {
     if (c) c.textContent = relogio(tempoAtualMs(juntos));
     const t = el.querySelector('[data-juntos-total]');
     if (t) t.textContent = duracaoPorExtenso(juntos.totalMs + tempoAtualMs(juntos));
+    // a curiosidade acompanha o tempo, mas sem piscar a cada segundo
+    if (Math.floor(tempoAtualMs(juntos) / 1000) % 15 === 0) {
+      const cur = el.querySelector('[data-curiosidade]');
+      if (cur) cur.innerHTML = htmlCuriosidade();
+    }
   }, 1000);
   const sincronizar = setInterval(async () => {
     if (document.querySelector('dialog[open]')) return;

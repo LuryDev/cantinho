@@ -3,11 +3,12 @@ import { injetarSpriteIcones, icone } from './ui/icones.js';
 import { ICONE_TEMA } from './ui/ilustracoes.js';
 import { esc, toast } from './ui/dom.js';
 import { TEMAS, aplicarTema, aplicarPreferencias, lerPreferencias, temaDeEntrada, temaSalvo, temaAtual, aoMudarTema } from './tema.js';
-import { iniciarAuth, modoAuth, clienteSupabase, sair, salvarTemaRemoto, aoSairDaSessao } from './auth.js';
+import { iniciarAuth, modoAuth, clienteSupabase, sair, salvarTemaRemoto, aoSairDaSessao, PERFIS } from './auth.js';
 import { mostrarLogin } from './login.js';
 import { mostrarBoasVindas } from './boas-vindas.js';
 import { definirStore, storeAtual, listar, obterAjustes, salvarAjustes } from './store/index.js';
 import { lerJuntos, normalizarJuntos, tempoAtualMs, relogio } from './juntos.js';
+import { iniciarSala, encerrarSala } from './sala-cinema.js';
 import { criarStoreLocal } from './store/local.js';
 
 export const ROTAS = [
@@ -61,6 +62,16 @@ async function abrirApp(perfil, { primeiraEntrada, animar }) {
   } else {
     definirStore(criarStoreLocal());
   }
+
+  // Sala do cinema (sessão juntos): um canal só para o site todo
+  const sala = iniciarSala(perfil, { modo: modoAuth(), cliente: clienteSupabase() });
+  sala.ouvir((msg) => {
+    if (msg.tipo !== 'carregar' || rotaDoHash().id === 'cinema') return;
+    toast(`${PERFIS[msg.de]?.nome || 'Alguém'} colocou "${msg.titulo || 'um vídeo'}" no cinema.`, 'info', {
+      acao: { texto: 'Assistir junto', executar: () => { location.hash = '#/cinema'; } },
+      duracao: 9000,
+    });
+  });
 
   aplicarPreferencias(lerPreferencias(perfil.id));
   const tema = primeiraEntrada ? temaDeEntrada(perfil.id, perfil.temaPadrao) : (temaSalvo(perfil.id) || perfil.temaPadrao);
@@ -253,6 +264,7 @@ async function encerrarSessao() {
   removerOuvinteTema?.();
   removerOuvinteTema = null;
   pararAvisos();
+  encerrarSala();
   try { await sair(); } catch (e) { console.warn(e); }
   perfilAtual = null;
   const shell = document.getElementById('app-shell');

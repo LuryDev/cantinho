@@ -130,6 +130,17 @@ create policy "casal apaga fotos" on storage.objects
   for delete to authenticated
   using (bucket_id = 'memorias' and (storage.foldername(name))[1] = public.meu_casal()::text);
 
+-- ---------- Cinema: assistir junto (Realtime, canal privado do casal) ----------
+drop policy if exists "casal entra na sala do cinema" on realtime.messages;
+create policy "casal entra na sala do cinema" on realtime.messages
+  for select to authenticated
+  using (realtime.topic() = 'cinema:' || public.meu_casal()::text);
+
+drop policy if exists "casal envia na sala do cinema" on realtime.messages;
+create policy "casal envia na sala do cinema" on realtime.messages
+  for insert to authenticated
+  with check (realtime.topic() = 'cinema:' || public.meu_casal()::text);
+
 -- =====================================================================
 -- PRÓXIMO PASSO: crie as contas da Manu e do Lury em Authentication > Users
 -- e rode o arquivo supabase/vincular-contas.sql (trocando os e-mails).

@@ -77,11 +77,11 @@ nosso-cantinho/
 | **Temas** | Neutro, Lury e Manu. Troca imediata pelo topo ou por **Aparência**; muda cores, fontes, fundos, ilustrações, molduras, galeria e a sala de cinema. Salvo por perfil. |
 | **Início** | Frase do tema, foto do casal (ou ilustração), aviso de cartinha nova, **"Estamos juntos?"**, contador de anos/meses/dias com data editável, atalhos, memórias recentes e cartinha em destaque. |
 | **Animação de início** | Na **primeira vez que a Manu entra**, a tela escurece, aparece "Feito pelo seu amorzinho, Lury!" com fogos de artifício e confetes (desenhados em `<canvas>`, sem bibliotecas) e termina numa tela de girassóis com "O nosso cantinho está pronto, amor!". A marca de "já viu" fica nos ajustes do casal (vale em todos os aparelhos). O botão **Animação de início** no login mostra de novo quando quiserem. |
-| **Estamos juntos?** | Um botão liga um cronômetro compartilhado: os dois perfis veem o mesmo tempo correndo (também no topo de todas as páginas). Ao encerrar, dá para anotar "como foi" e corrigir o horário de término. Guarda o total juntos, número de encontros, o maior encontro e o histórico (com exclusão). |
+| **Estamos juntos?** | Um botão liga um cronômetro compartilhado: os dois perfis veem o mesmo tempo correndo (também no topo de todas as páginas). Ao encerrar, dá para anotar "como foi" e corrigir o horário de término. Guarda o total juntos, número de encontros, o maior encontro e o histórico (com exclusão). Embaixo aparece uma **curiosidade** comparando o tempo com recordes e fatos (ex.: "Nossa! Vocês ficaram 30 minutos juntos — praticamente o mesmo tempo que o recorde de alguém que ficou embaixo d’água sem respirar"), com a fonte. Os fatos foram pesquisados na web e ficam em `js/curiosidades.js` (fácil de atualizar). |
 | **Cartinhas** | **Enviar para o outro perfil** ou guardar como rascunho. Abas Recebidas / Enviadas / Rascunhos; cartinha nova chega num envelope fechado com selo de cera que se abre ao clicar, contador de novas no menu, "lida em…" para quem enviou e botão **Responder**. Rascunhos não aparecem para o outro perfil. Editor com título, como chamar (opcional), data e mensagem; papel (6), cor do papel, cor da tinta, fonte (6), alinhamento, moldura (4) e até 6 enfeites dos três temas. Prévia ao vivo e em tamanho grande. Coleção com abrir, editar e excluir (com confirmação). |
 | **Listas** | Compartilhadas entre os dois, mostrando quem criou a lista, quem adicionou cada item e quem concluiu. Estilo por lista: cor (8), papel (simples, caderno, post-it, quadriculado, kraft) e adesivo. Criar/renomear/excluir listas com descrição e categoria (6 sugeridas + personalizada); adicionar, editar, concluir e excluir itens (com "Desfazer"); barra de progresso; filtro por categoria. |
 | **Cinemateca** | Pesquisa no TMDB com pôsteres (quando configurado), cadastro manual sempre disponível, abas Queremos assistir / Assistindo / Assistidos, detalhes com observações, mudança de status, remoção e bloqueio de duplicatas. |
-| **Cinema** | Sala com letreiro, cortinas, moldura e poltronas (decoração muda com o tema). Carrega vídeo por link ou ID, player oficial do YouTube, tela cheia, favoritos com miniatura e título editável. Vídeos que não permitem incorporação mostram aviso amigável + link para o YouTube. |
+| **Cinema** | Sala com letreiro, cortinas, moldura e poltronas (muda com o tema). **Assistir junto:** quem coloca um vídeo, dá play, pausa ou avança faz o mesmo acontecer na tela do outro, sem colar link (Realtime do Supabase; no modo demonstração, entre abas do mesmo navegador). Mostra se o outro está na sala; quem está fora do Cinema recebe aviso "Assistir junto". **Reações** 😂 😢 🍿 😱 que sobem na tela dos dois (inclusive em tela cheia) e ficam contadas por vídeo. Todo vídeo carregado é salvo em **Sessões** (quantas vezes, quando, por quem, se foi junto) e pode ganhar estrela em **Favoritos**. Vídeos que não permitem incorporação mostram aviso + link para o YouTube. |
 | **Memórias** | Galeria (polaroid no tema Manu, moldura gótica no Lury), visualização ampliada com setas, envio de foto ou URL, legenda e data opcionais. |
 | **Aparência** | Cartões de tema com prévia, "ao entrar usar o tema do perfil / o último escolhido", reduzir movimento, decoração discreta, texto maior e (no modo local) restaurar exemplos ou apagar dados. |
 
@@ -111,12 +111,13 @@ Enquanto o Supabase **não** estiver configurado:
 
    O login no site é só por **nome + senha**: quem digita "Manu" entra com `manu@nossocantinho.app`. Nenhum e-mail é enviado para esses endereços. Para usar outro domínio, defina `LOGIN_DOMINIO` no `.env`/Vercel e crie as contas com ele.
 4. **Authentication → Sign In / Providers → Email**: desligue *Allow new users to sign up*, para ninguém mais criar conta.
-5. No **SQL Editor**, abra uma query nova, cole `supabase/vincular-contas.sql` e rode. Ele já vem com os e-mails internos acima (só mude se trocou o domínio). Pode rodar de novo sem duplicar nada; no fim ele lista as duas contas vinculadas.
-6. **Project Settings → API**: copie a *Project URL* e a chave **anon public**.
-7. Copie `.env.example` para `.env` e preencha:
+5. *(Para "Assistir junto" no Cinema)* No **SQL Editor**, rode também `supabase/cinema-juntos.sql`. Quem rodou o `schema.sql` depois de 31/10/2026 já tem isso.
+6. No **SQL Editor**, abra uma query nova, cole `supabase/vincular-contas.sql` e rode. Ele já vem com os e-mails internos acima (só mude se trocou o domínio). Pode rodar de novo sem duplicar nada; no fim ele lista as duas contas vinculadas.
+7. **Project Settings → API**: copie a *Project URL* e a chave **anon public**.
+8. Copie `.env.example` para `.env` e preencha:
    - `.env` linha 10 → `SUPABASE_URL=https://xxxx.supabase.co`
    - `.env` linha 11 → `SUPABASE_ANON_KEY=eyJ...` (a **anon**; o servidor se recusa a iniciar se detectar uma `service_role`)
-8. `npm start` de novo. A tela de entrada passa a pedir **nome e senha**.
+9. `npm start` de novo. A tela de entrada passa a pedir **nome e senha**.
 
 **Na Vercel**, use as variáveis de ambiente (seção 6.1). **Em outra hospedagem só estática**, copie `config.exemplo.js` para `config.js` e preencha `supabaseUrl` e `supabaseAnonKey`. Essas duas são públicas por natureza — quem protege os dados são as políticas RLS. **Nunca** coloque a `service_role` em nenhum arquivo do front-end.
 
@@ -184,6 +185,7 @@ O `.gitignore` já impede o envio do `.env`. Confira com `git status` antes do p
 - Rascunhos de cartinhas ficam escondidos na interface do outro perfil, mas no banco o casal inteiro tem acesso às linhas (RLS por casal). Para sigilo total, criar uma política que esconda rascunhos de quem não é o autor.
 - O título do vídeo é preenchido automaticamente quando o player do YouTube informa; senão, a pessoa digita.
 - Sem modo offline/PWA.
+- "Assistir junto": navegadores só tocam vídeo com som depois de um toque na página; por isso, ao receber um vídeo, pode aparecer o botão "Assistir junto com …". A sincronização tolera ~1,5 s de diferença.
 
 ### Decisões tomadas sem perguntar (fáceis de mudar)
 
