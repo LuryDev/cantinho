@@ -2,6 +2,7 @@
 //  - Sessão juntos: o que um perfil coloca/pausa/avança aparece na tela do outro (sala-cinema.js)
 //  - Reações (risada, tristeza, pipoca, susto) que flutuam na tela dos dois
 //  - Todo vídeo assistido fica salvo em "Sessões"; os preferidos ganham estrela em "Favoritos"
+//  - O tempo com vídeo tocando vira Recompensas do Cinema (aba "Conquistas")
 // Respeita as regras de incorporação do YouTube: nada de download nem remoção de anúncios/controles.
 import { listar, salvar, remover, obterAjustes, salvarAjustes } from '../store/index.js';
 import { salaAtual } from '../sala-cinema.js';
@@ -10,6 +11,8 @@ import { icone } from '../ui/icones.js';
 import { adesivo, enfeitePorTema } from '../ui/ilustracoes.js';
 import { esc, toast, confirmar, abrirModal, lerFormulario, marcarErro, limparErros, formatarData } from '../ui/dom.js';
 import { temaAtual, aoMudarTema } from '../tema.js';
+import { somarTempoCinema, gravarTempoCinema, lerProgresso, carregarRecompensas } from '../recompensas.js';
+import { montarPainelConquistas } from '../conquistas.js';
 
 export const REACOES = {
   risada: { emoji: '😂', nome: 'Risada' },
@@ -78,6 +81,7 @@ function poltronas() {
 }
 
 const ehFavorito = (v) => v.favorito !== false; // favoritos antigos não tinham o campo
+const classeModo = (modo) => (modo ? `modo-${modo}` : '');
 
 export async function renderizar(el, ctx) {
   const eu = ctx.perfil.id;
@@ -86,7 +90,8 @@ export async function renderizar(el, ctx) {
   const sala = salaAtual();
 
   let videos = [];
-  let aba = 'sessoes';
+  let aba = /[?&]conquistas\b/.test(location.hash) ? 'conquistas' : 'sessoes';
+  let limparPainel = null;
   let player = null;
   let playerPronto = null;
   let usandoApi = true;
@@ -118,7 +123,7 @@ export async function renderizar(el, ctx) {
       </div>
     </div>
 
-    <section class="sala" aria-label="Sala de cinema">
+    <section class="sala ${classeModo(lerProgresso().modoCinema)}" aria-label="Sala de cinema">
       <div class="letreiro"><span class="letreiro-texto">${letreiro(temaAtual())}</span></div>
       <div class="palco">
         <div class="cortina esquerda" aria-hidden="true"></div>
@@ -175,10 +180,11 @@ export async function renderizar(el, ctx) {
     </section>
 
     <section class="secao-videos" aria-labelledby="titulo-videos">
-      <h2 id="titulo-videos" class="sr-only">Vídeos</h2>
-      <div class="abas" role="tablist" aria-label="Vídeos">
+      <h2 id="titulo-videos" class="sr-only">Vídeos e conquistas</h2>
+      <div class="abas" role="tablist" aria-label="Vídeos e conquistas">
         <button type="button" class="aba" role="tab" id="aba-sessoes" aria-controls="painel-videos" data-aba-video="sessoes"></button>
         <button type="button" class="aba" role="tab" id="aba-favoritos" aria-controls="painel-videos" data-aba-video="favoritos"></button>
+        <button type="button" class="aba" role="tab" id="aba-conquistas" aria-controls="painel-videos" data-aba-video="conquistas"></button>
       </div>
       <div id="painel-videos" role="tabpanel"></div>
     </section>`;
@@ -260,6 +266,8 @@ export async function renderizar(el, ctx) {
       if (dados.title) atualizarTituloAutomatico(dados.title);
     }
     if (ev.data === 1) { entrar.hidden = true; jaInteragiu = true; }
+    marcarTocando(ev.data === 1);
+    if (ev.data === 2 || ev.data === 0) salvarTempoEConferir();
     if (ev.data !== 1 && ev.data !== 2 && ev.data !== 0) return;
     const tocando = ev.data === 1;
     // Ignora só o eco do comando que veio do outro perfil; ações da própria pessoa sempre passam
@@ -456,19 +464,36 @@ export async function renderizar(el, ctx) {
       </li>`;
   }
 
+  function desenharAbas() {
+    const ordenados = videos.length;
+    const favoritos = videos.filter(ehFavorito).length;
+    const prog = lerProgresso();
+    const abas = {
+      sessoes: `Sessões <span class="contador">${ordenados}</span>`,
+      favoritos: `${icone('estrela')} Favoritos <span class="contador">${favoritos}</span>`,
+      conquistas: `${icone('sparkle')} Conquistas <span class="contador">${prog.desbloqueadas.length}</span>`,
+    };
+    for (const [id, html] of Object.entries(abas)) {
+      const b = el.querySelector(`#aba-${id}`);
+      b.innerHTML = html;
+      b.setAttribute('aria-selected', String(aba === id));
+      b.tabIndex = aba === id ? 0 : -1;
+    }
+    el.querySelector('#painel-videos').setAttribute('aria-labelledby', `aba-${aba}`);
+  }
+
   function desenharVideos(focarAba = false) {
+    desenharAbas();
+    if (focarAba) el.querySelector(`[data-aba-video="${aba}"]`)?.focus();
+    if (aba === 'conquistas') {
+      if (!limparPainel) limparPainel = montarPainelConquistas(el.querySelector('#painel-videos'), ctx.perfil);
+      return;
+    }
+    limparPainel?.();
+    limparPainel = null;
     const ordenados = [...videos].sort((a, b) => String(b.ultimoEm || b.atualizadoEm || '').localeCompare(String(a.ultimoEm || a.atualizadoEm || '')));
     const favoritos = ordenados.filter(ehFavorito);
     const lista = aba === 'favoritos' ? favoritos : ordenados;
-    const abaS = el.querySelector('#aba-sessoes');
-    const abaF = el.querySelector('#aba-favoritos');
-    abaS.innerHTML = `Sessões <span class="contador">${ordenados.length}</span>`;
-    abaF.innerHTML = `${icone('estrela')} Favoritos <span class="contador">${favoritos.length}</span>`;
-    abaS.setAttribute('aria-selected', String(aba === 'sessoes'));
-    abaF.setAttribute('aria-selected', String(aba === 'favoritos'));
-    abaS.tabIndex = aba === 'sessoes' ? 0 : -1;
-    abaF.tabIndex = aba === 'favoritos' ? 0 : -1;
-    el.querySelector('#painel-videos').setAttribute('aria-labelledby', `aba-${aba}`);
     el.querySelector('#painel-videos').innerHTML = lista.length
       ? `<ul class="grade grade-videos" role="list">${lista.map(htmlVideo).join('')}</ul>`
       : `<div class="vazio">
@@ -476,7 +501,6 @@ export async function renderizar(el, ctx) {
           <h3>${aba === 'favoritos' ? 'Nenhum favorito ainda' : 'Nenhuma sessão ainda'}</h3>
           <p>${aba === 'favoritos' ? 'Toque na estrela de um vídeo para guardar aqui.' : 'Todo vídeo que vocês colocarem na tela aparece aqui automaticamente.'}</p>
         </div>`;
-    if (focarAba) el.querySelector(`[data-aba-video="${aba}"]`)?.focus();
   }
 
   async function alternarFavorito(v) {
@@ -537,6 +561,49 @@ export async function renderizar(el, ctx) {
       try { const salvo = await salvar('videos', doc); videos = videos.map((v) => (v.id === salvo.id ? salvo : v)); desenharVideos(); } catch { /* ignora */ }
     }, 1500));
   }
+
+  // ---------------- Tempo de cinema e recompensas ----------------
+  // Conta só com o player oficial tocando. Assistindo juntos, cada um conta metade,
+  // assim o total do casal não duplica.
+  let ultimoTique = Date.now();
+  const relogioCinema = setInterval(() => {
+    const agora = Date.now();
+    const passou = Math.min(agora - ultimoTique, 5000);
+    ultimoTique = agora;
+    if (!videoAtual || !usandoApi || !tocandoAgora()) return;
+    const juntos = podeSincronizar() && sala.presentes.has(outro.id);
+    somarTempoCinema(eu, juntos ? passou / 2 : passou);
+  }, 1000);
+
+  function marcarTocando(tocando) {
+    if (tocando) document.body.dataset.cinemaTocando = 'sim';
+    else delete document.body.dataset.cinemaTocando;
+  }
+
+  const pedirComemoracao = () => window.dispatchEvent(new CustomEvent('nc:verificar-conquistas'));
+  async function salvarTempoEConferir() {
+    await gravarTempoCinema();
+    if (!tocandoAgora()) pedirComemoracao();
+  }
+
+  let desbloqueadasAntes = lerProgresso().desbloqueadas.length;
+  const elSala = el.querySelector('.sala');
+  function aoMudarRecompensas(e) {
+    const prog = e.detail;
+    elSala.className = `sala ${classeModo(prog.modoCinema)}`;
+    if (aba !== 'conquistas') desenharAbas();
+    if (prog.desbloqueadas.length > desbloqueadasAntes) {
+      const nova = prog.desbloqueadas.at(-1);
+      if (tocandoAgora()) {
+        toast(`Recompensa desbloqueada: ${nova.nome}! A comemoração aparece quando pausarem.`, 'sucesso', { duracao: 5000 });
+      } else pedirComemoracao();
+    }
+    desbloqueadasAntes = prog.desbloqueadas.length;
+  }
+  window.addEventListener('nc:recompensas-mudou', aoMudarRecompensas);
+  carregarRecompensas().catch(() => {});
+  const gravarAoSair = () => { gravarTempoCinema(); };
+  window.addEventListener('pagehide', gravarAoSair);
 
   // ---------------- Eventos ----------------
   form.addEventListener('submit', (e) => {
@@ -626,7 +693,8 @@ export async function renderizar(el, ctx) {
     const atual = e.target.closest('[data-aba-video]');
     if (!atual || !['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
     e.preventDefault();
-    aba = aba === 'sessoes' ? 'favoritos' : 'sessoes';
+    const ordem = ['sessoes', 'favoritos', 'conquistas'];
+    aba = ordem[(ordem.indexOf(aba) + (e.key === 'ArrowRight' ? 1 : ordem.length - 1)) % ordem.length];
     desenharVideos(true);
   });
 
@@ -657,6 +725,12 @@ export async function renderizar(el, ctx) {
     pararOuvirSala();
     pararStatus();
     clearTimeout(timerPersistir);
+    clearInterval(relogioCinema);
+    window.removeEventListener('nc:recompensas-mudou', aoMudarRecompensas);
+    window.removeEventListener('pagehide', gravarAoSair);
+    limparPainel?.();
+    marcarTocando(false);
+    gravarTempoCinema();
     try { player?.destroy?.(); } catch { /* ignora */ }
     player = null;
   };

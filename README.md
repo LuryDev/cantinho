@@ -44,7 +44,8 @@ nosso-cantinho/
 │   ├── base.css            # Reset, layout, menu lateral, navegação no celular
 │   ├── componentes.css     # Botões, campos, cartões, modais, avisos, abas…
 │   ├── paginas.css         # Estilos de cada área + cartinhas, cinema, galeria
-│   └── boas-vindas.css     # Animações da Manu (girassóis) e do Lury (morcegos)
+│   ├── boas-vindas.css     # Animações da Manu (girassóis) e do Lury (morcegos)
+│   └── recompensas.css     # Estilos de nome, modos da sala, conquistas e comemoração
 ├── js/
 │   ├── app.js              # Inicialização, estrutura, menu e rotas (#/inicio…)
 │   ├── auth.js             # Sessão: modo demonstração ou Supabase Auth
@@ -52,6 +53,9 @@ nosso-cantinho/
 │   ├── boas-vindas.js      # Animação de boas-vindas (pulável, respeita movimento reduzido)
 │   ├── tema.js             # Troca de tema e preferências visuais
 │   ├── config.js           # Lê a config pública
+│   ├── recompensas.js      # As 14 recompensas do cinema + contagem do tempo (dados)
+│   ├── conquistas.js       # Painel de conquistas, comemoração e colecionáveis (tela)
+│   ├── foto-recordacao.js  # Desenha as fotos de recordação (canvas 1080×1350)
 │   ├── store/              # CAMADA DE DADOS (separada da interface)
 │   │   ├── index.js        # Interface única usada pelas páginas
 │   │   ├── local.js        # localStorage (modo demonstração)
@@ -82,6 +86,7 @@ nosso-cantinho/
 | **Listas** | Compartilhadas entre os dois, mostrando quem criou a lista, quem adicionou cada item e quem concluiu. Estilo por lista: cor (8), papel (simples, caderno, post-it, quadriculado, kraft) e adesivo. Criar/renomear/excluir listas com descrição e categoria (6 sugeridas + personalizada); adicionar, editar, concluir e excluir itens (com "Desfazer"); barra de progresso; filtro por categoria. |
 | **Cinemateca** | Pesquisa no TMDB com pôsteres (quando configurado), cadastro manual sempre disponível, abas Queremos assistir / Assistindo / Assistidos, detalhes com observações, mudança de status, remoção e bloqueio de duplicatas. |
 | **Cinema** | Sala com letreiro, cortinas, moldura e poltronas (muda com o tema). **Assistir junto:** quem coloca um vídeo, dá play, pausa ou avança faz o mesmo acontecer na tela do outro, sem colar link (Realtime do Supabase; no modo demonstração, entre abas do mesmo navegador). Mostra se o outro está na sala; quem está fora do Cinema recebe aviso "Assistir junto". **Reações** 😂 😢 🍿 😱 que sobem na tela dos dois (inclusive em tela cheia) e ficam contadas por vídeo. Todo vídeo carregado é salvo em **Sessões** (quantas vezes, quando, por quem, se foi junto) e pode ganhar estrela em **Favoritos**. Vídeos que não permitem incorporação mostram aviso + link para o YouTube. |
+| **Recompensas do Cinema** | O tempo com vídeo tocando no Cinema é somado para o casal (assistindo juntos, conta uma vez só) e libera **14 recompensas** em ciclos de uma hora: aos **15 min** uma pequena (**colecionável**), aos **30 min** uma média (**visual do site**: estilo de nome ou modo da sala) e na **hora cheia** uma grande (**foto de recordação**). Colecionáveis: ingresso dourado, balde de pipoca, claquete, rolo de filme e troféu. Visuais: nome cromado, nome neon e nome em letreiro (cada um escolhe o seu, aparece no topo e na saudação) e os modos **noir** e **Sala VIP** da sala (valem para os dois). Fotos: polaroid, cartaz do casal, tira de cabine e estrela de cinema, geradas no próprio navegador com o tempo, os vídeos mais vistos, as reações e a foto do casal, prontas para **baixar** ou **compartilhar**. Ao desbloquear aparece uma comemoração (se o vídeo estiver tocando, ela espera a pausa); quem não estava junto vê a comemoração quando entrar. Tudo fica na aba **Conquistas** do Cinema. Os limites ficam em `js/recompensas.js`. |
 | **Memórias** | Galeria (polaroid no tema Manu, moldura gótica no Lury), visualização ampliada com setas, envio de foto ou URL, legenda e data opcionais. |
 | **Aparência** | Cartões de tema com prévia, "ao entrar usar o tema do perfil / o último escolhido", reduzir movimento, decoração discreta, texto maior e (no modo local) restaurar exemplos ou apagar dados. |
 
@@ -194,6 +199,8 @@ O `.gitignore` já impede o envio do `.env`. Confira com `git status` antes do p
 - A tela de entrada usa sempre o tema Neutro.
 - Excluir cartinhas, listas, filmes, vídeos e memórias pede confirmação; excluir um **item** de lista é imediato, com botão **Desfazer**.
 - Ao mudar o status de um filme, a coleção acompanha o filme até a aba nova.
+- Recompensas: o ritmo pedido (15 min / 30 min / 1 h) se repete a cada hora, então as 14 recompensas terminam em 4 h 30 min de cinema. Para espaçar mais, basta mudar os minutos em `js/recompensas.js`.
+- Recompensas valem para o casal; o estilo de nome é escolhido por cada um, e o modo da sala é um só para os dois.
 - Nenhum vídeo de exemplo foi incluído (não foi possível confirmar links públicos válidos); o campo fica pronto para colar um link.
 
 ---
@@ -218,6 +225,7 @@ Marque cada item depois de testar (use uma janela anônima para começar do zero
 - [ ] **Cinemateca sem chave:** aparece o aviso de configuração; cadastrar filme manual; tentar duplicar (bloqueia); mudar status; observações; remover.
 - [ ] **Cinemateca com chave:** pesquisar "Amélie" → resultados reais com pôster → adicionar → aparece "Na coleção".
 - [ ] **Cinema:** colar um link do YouTube → toca na tela; salvar nos favoritos; renomear; tocar pelo favorito; tela cheia. Testar um vídeo com incorporação bloqueada → aviso amigável com link.
+- [ ] **Recompensas:** tocar um vídeo por alguns segundos e pausar → a aba **Conquistas** mostra o tempo. Para testar rápido no modo demonstração, no console: `a=JSON.parse(localStorage['nc:v1:ajustes']); a.cinemaMs_lury=65*60000; localStorage['nc:v1:ajustes']=JSON.stringify(a)` e atualizar → comemoração da Polaroid; gerar e baixar a foto; usar o nome cromado; ativar o modo noir quando chegar a 1 h 30.
 - [ ] **Memórias:** abrir a visualização ampliada, navegar com as setas, enviar uma foto com legenda e data, editar e excluir.
 - [ ] **Aparência:** trocar tema pelos cartões; decoração discreta; texto maior; restaurar exemplos.
 - [ ] Navegar só com teclado (Tab/Enter/Esc): o foco é sempre visível.

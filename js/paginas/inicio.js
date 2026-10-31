@@ -249,7 +249,7 @@ export async function renderizar(el, ctx) {
     el.innerHTML = `
       <section class="hero cartao" aria-labelledby="hero-titulo">
         <div class="hero-texto">
-          <p class="hero-saudacao">Olá, ${esc(ctx.perfil.nome)}!</p>
+          <p class="hero-saudacao">Olá, <span data-nome-perfil="${ctx.perfil.id}">${esc(ctx.perfil.nome)}</span>!</p>
           <h1 id="hero-titulo">${FRASES[tema]}</h1>
           <p class="hero-resumo">Aqui ficam as cartinhas, as listas, os filmes, os vídeos e as memórias de vocês — tudo num lugar só.</p>
           <div class="grupo-botoes">

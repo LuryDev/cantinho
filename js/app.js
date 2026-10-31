@@ -10,6 +10,7 @@ import { definirStore, storeAtual, listar, obterAjustes, salvarAjustes } from '.
 import { lerJuntos, normalizarJuntos, tempoAtualMs, relogio } from './juntos.js';
 import { iniciarSala, encerrarSala } from './sala-cinema.js';
 import { criarStoreLocal } from './store/local.js';
+import { carregarRecompensas, verificarConquistas, aplicarEstilosNome, gravarTempoCinema, esperarGravacao, limparCacheRecompensas } from './recompensas.js';
 
 export const ROTAS = [
   { id: 'inicio', titulo: 'Início', icone: 'casa', modulo: () => import('./paginas/inicio.js') },
@@ -78,6 +79,7 @@ async function abrirApp(perfil, { primeiraEntrada, animar }) {
   aplicarTema(tema, { perfil: perfil.id });
 
   montarEstrutura(perfil);
+  const recompensas = carregarRecompensas().catch(() => null);
   const animacao = animar ? escolherAnimacao(perfil) : null;
 
   window.addEventListener('hashchange', navegar);
@@ -92,6 +94,29 @@ async function abrirApp(perfil, { primeiraEntrada, animar }) {
     toast(novas === 1 ? 'Você tem 1 cartinha nova!' : `Você tem ${novas} cartinhas novas!`, 'info', {
       acao: { texto: 'Abrir', executar: () => { location.hash = '#/cartinhas'; } },
     });
+  }
+  await recompensas;
+  comemorarNovidades();
+}
+
+/**
+ * Recompensas do cinema desbloqueadas que este perfil ainda não viu (inclusive as que
+ * o outro perfil desbloqueou assistindo sozinho). Não interrompe outra janela aberta.
+ */
+let comemorando = false;
+export async function comemorarNovidades() {
+  if (!perfilAtual || comemorando || document.querySelector('dialog[open], .intro, .boas-vindas:not([hidden])')
+    || document.body.dataset.cinemaTocando === 'sim') return;
+  comemorando = true;
+  try {
+    const perfil = perfilAtual;
+    const novas = await verificarConquistas(perfil);
+    if (novas.length && perfilAtual === perfil) {
+      const { celebrarConquistas } = await import('./conquistas.js');
+      await celebrarConquistas(perfil, novas);
+    }
+  } finally {
+    comemorando = false;
   }
 }
 
@@ -143,13 +168,15 @@ async function atualizarAvisos() {
 }
 
 const aoMudarCartas = () => atualizarAvisos();
+const aoPedirComemoracao = () => comemorarNovidades();
 const aoMudarJuntos = (e) => { estadoJuntos = normalizarJuntos(e.detail); desenharChipJuntos(); };
 
 function iniciarAvisos() {
   pararAvisos();
   window.addEventListener('nc:cartas-mudou', aoMudarCartas);
   window.addEventListener('nc:juntos-mudou', aoMudarJuntos);
-  intervaloAvisos = setInterval(atualizarAvisos, 45000);
+  window.addEventListener('nc:verificar-conquistas', aoPedirComemoracao);
+  intervaloAvisos = setInterval(() => { atualizarAvisos(); comemorarNovidades(); }, 45000);
   intervaloRelogio = setInterval(desenharChipJuntos, 1000);
   return atualizarAvisos();
 }
@@ -159,6 +186,7 @@ function pararAvisos() {
   clearInterval(intervaloRelogio);
   window.removeEventListener('nc:cartas-mudou', aoMudarCartas);
   window.removeEventListener('nc:juntos-mudou', aoMudarJuntos);
+  window.removeEventListener('nc:verificar-conquistas', aoPedirComemoracao);
   estadoJuntos = null;
 }
 
@@ -205,7 +233,7 @@ function montarEstrutura(perfil) {
         ${seletorTema('tema')}
         <div class="usuario">
           <span class="avatar" aria-hidden="true">${ICONE_TEMA[perfil.temaPadrao]()}</span>
-          <span class="usuario-nome">${esc(perfil.nome)}${demo ? '<small>modo demonstração</small>' : ''}</span>
+          <span class="usuario-nome"><span data-nome-perfil="${perfil.id}">${esc(perfil.nome)}</span>${demo ? '<small>modo demonstração</small>' : ''}</span>
           <button type="button" class="botao-icone" data-sair aria-label="Sair da conta" title="Sair da conta">${icone('sair')}</button>
         </div>
       </header>
@@ -265,6 +293,8 @@ async function encerrarSessao() {
   removerOuvinteTema = null;
   pararAvisos();
   encerrarSala();
+  try { await gravarTempoCinema(); await esperarGravacao(); } catch { /* sem conexão: tudo bem */ }
+  limparCacheRecompensas();
   try { await sair(); } catch (e) { console.warn(e); }
   perfilAtual = null;
   const shell = document.getElementById('app-shell');
@@ -322,6 +352,7 @@ async function navegar({ focar = true } = {}) {
     const limpeza = await modulo.renderizar(pagina, contexto);
     if (minha !== renderizacao) { if (typeof limpeza === 'function') limpeza(); return; }
     limparPagina = typeof limpeza === 'function' ? limpeza : null;
+    aplicarEstilosNome(pagina);
     window.scrollTo({ top: 0 });
     if (focar) focarTitulo();
   } catch (e) {
