@@ -6,7 +6,7 @@ import { TEMAS, aplicarTema, aplicarPreferencias, lerPreferencias, temaDeEntrada
 import { iniciarAuth, modoAuth, clienteSupabase, sair, salvarTemaRemoto, aoSairDaSessao } from './auth.js';
 import { mostrarLogin } from './login.js';
 import { mostrarBoasVindas } from './boas-vindas.js';
-import { definirStore, storeAtual, listar } from './store/index.js';
+import { definirStore, storeAtual, listar, obterAjustes, salvarAjustes } from './store/index.js';
 import { lerJuntos, normalizarJuntos, tempoAtualMs, relogio } from './juntos.js';
 import { criarStoreLocal } from './store/local.js';
 
@@ -67,7 +67,7 @@ async function abrirApp(perfil, { primeiraEntrada, animar }) {
   aplicarTema(tema, { perfil: perfil.id });
 
   montarEstrutura(perfil);
-  const animacao = animar ? mostrarBoasVindas(perfil) : null;
+  const animacao = animar ? escolherAnimacao(perfil) : null;
 
   window.addEventListener('hashchange', navegar);
   const avisos = iniciarAvisos();
@@ -82,6 +82,25 @@ async function abrirApp(perfil, { primeiraEntrada, animar }) {
       acao: { texto: 'Abrir', executar: () => { location.hash = '#/cartinhas'; } },
     });
   }
+}
+
+/**
+ * Na primeira vez que a Manu entra, mostra a animação de início (feita pelo Lury).
+ * A marca de "já viu" fica nos ajustes do casal, então vale para todos os aparelhos.
+ */
+async function escolherAnimacao(perfil) {
+  if (perfil.id === 'manu') {
+    let jaViu = true;
+    try { jaViu = Boolean((await obterAjustes())?.introManuVista); } catch { jaViu = true; }
+    if (!jaViu) {
+      const { mostrarIntro } = await import('./intro.js');
+      try { sessionStorage.setItem('nc:boas-vindas-vista', '1'); } catch { /* ignora */ }
+      await mostrarIntro();
+      try { await salvarAjustes({ introManuVista: true }); } catch { /* tenta de novo na próxima entrada */ }
+      return;
+    }
+  }
+  await mostrarBoasVindas(perfil);
 }
 
 // ------------------------------------------------------------------

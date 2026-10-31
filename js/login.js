@@ -55,9 +55,16 @@ export function mostrarLogin({ erroInicial = '' } = {}) {
           <button type="submit" class="botao">${icone('cadeado')} Entrar</button>
 
         </form>`}
+
+      <button type="button" class="botao-fantasma login-intro" data-ver-intro>${icone('sparkle')} Animação de início</button>
     </div>`;
 
   tela.hidden = false;
+
+  tela.querySelector('[data-ver-intro]').addEventListener('click', async () => {
+    const { mostrarIntro } = await import('./intro.js');
+    await mostrarIntro({ textoBotao: 'Voltar' });
+  });
 
   return new Promise((resolver) => {
     if (demo) {
