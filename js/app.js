@@ -1,0 +1,248 @@
+// Ponto de entrada: sessão → boas-vindas → estrutura da página → rotas.
+import { injetarSpriteIcones, icone } from './ui/icones.js';
+import { ICONE_TEMA } from './ui/ilustracoes.js';
+import { esc, toast } from './ui/dom.js';
+import { TEMAS, aplicarTema, aplicarPreferencias, lerPreferencias, temaDeEntrada, temaSalvo, temaAtual, aoMudarTema } from './tema.js';
+import { iniciarAuth, modoAuth, clienteSupabase, sair, salvarTemaRemoto, aoSairDaSessao } from './auth.js';
+import { mostrarLogin } from './login.js';
+import { mostrarBoasVindas } from './boas-vindas.js';
+import { definirStore, storeAtual } from './store/index.js';
+import { criarStoreLocal } from './store/local.js';
+
+export const ROTAS = [
+  { id: 'inicio', titulo: 'Início', icone: 'casa', modulo: () => import('./paginas/inicio.js') },
+  { id: 'cartinhas', titulo: 'Cartinhas', icone: 'carta', modulo: () => import('./paginas/cartinhas.js') },
+  { id: 'listas', titulo: 'Listas', icone: 'lista', modulo: () => import('./paginas/listas.js') },
+  { id: 'cinemateca', titulo: 'Cinemateca', icone: 'filme', modulo: () => import('./paginas/cinemateca.js') },
+  { id: 'cinema', titulo: 'Cinema', icone: 'cinema', modulo: () => import('./paginas/cinema.js') },
+  { id: 'memorias', titulo: 'Memórias', icone: 'imagem', modulo: () => import('./paginas/memorias.js') },
+  { id: 'aparencia', titulo: 'Aparência', icone: 'paleta', modulo: () => import('./paginas/aparencia.js') },
+];
+const NAV_INFERIOR = ['inicio', 'cartinhas', 'listas', 'cinema'];
+
+let perfilAtual = null;
+let limparPagina = null;
+let renderizacao = 0;
+let removerOuvinteTema = null;
+const midiaCelular = window.matchMedia('(max-width: 920px)');
+
+// ------------------------------------------------------------------
+async function iniciar() {
+  injetarSpriteIcones();
+  aplicarPreferencias(lerPreferencias(null));
+  const auth = await iniciarAuth();
+  document.getElementById('carregando').hidden = true;
+  if (auth.perfil) {
+    let jaViu = false;
+    try { jaViu = sessionStorage.getItem('nc:boas-vindas-vista') === '1'; } catch { /* ignora */ }
+    await abrirApp(auth.perfil, { primeiraEntrada: false, animar: !jaViu });
+  } else {
+    await fluxoLogin(auth.erro);
+  }
+}
+
+async function fluxoLogin(erro) {
+  aplicarPreferencias(lerPreferencias(null));
+  aplicarTema('neutro', { salvar: false });
+  const perfil = await mostrarLogin({ erroInicial: erro });
+  await abrirApp(perfil, { primeiraEntrada: true, animar: true });
+}
+
+async function abrirApp(perfil, { primeiraEntrada, animar }) {
+  perfilAtual = perfil;
+  if (modoAuth() === 'supabase') {
+    const { criarStoreSupabase } = await import('./store/supabase.js');
+    definirStore(criarStoreSupabase(clienteSupabase(), perfil));
+    aoSairDaSessao(() => { if (perfilAtual) location.reload(); });
+  } else {
+    definirStore(criarStoreLocal());
+  }
+
+  aplicarPreferencias(lerPreferencias(perfil.id));
+  const tema = primeiraEntrada ? temaDeEntrada(perfil.id, perfil.temaPadrao) : (temaSalvo(perfil.id) || perfil.temaPadrao);
+  aplicarTema(tema, { perfil: perfil.id });
+
+  montarEstrutura(perfil);
+  const animacao = animar ? mostrarBoasVindas(perfil) : null;
+
+  window.addEventListener('hashchange', navegar);
+  await navegar({ focar: !animacao });
+  if (animacao) {
+    await animacao;
+    focarTitulo();
+  }
+}
+
+// ------------------------------------------------------------------
+function montarEstrutura(perfil) {
+  const shell = document.getElementById('app-shell');
+  const demo = modoAuth() === 'demo';
+  const local = storeAtual()?.tipo === 'local';
+
+  const seletorTema = (nome) => `
+    <fieldset class="seletor-tema">
+      <legend>Tema</legend>
+      ${Object.entries(TEMAS).map(([id, t]) => `
+        <label title="Tema ${t.nome}">
+          <input type="radio" name="${nome}" value="${id}" ${temaAtual() === id ? 'checked' : ''}>
+          <span>${ICONE_TEMA[id]()}<span class="nome-tema">${t.nome}</span></span>
+        </label>`).join('')}
+    </fieldset>`;
+
+  shell.innerHTML = `
+    <aside class="menu-lateral" id="menu-lateral" aria-label="Menu principal">
+      <a class="marca" href="#/inicio">
+        <span class="marca-icone" aria-hidden="true">${ICONE_TEMA[temaAtual()]()}</span>
+        <span><span class="marca-nome">Nosso Cantinho</span><span class="marca-sub">versão beta</span></span>
+      </a>
+      <nav aria-label="Seções">
+        <ul class="menu-lista">
+          ${ROTAS.map((r) => `<li><a class="menu-link" href="#/${r.id}" data-rota="${r.id}">${icone(r.icone)}<span>${r.titulo}</span></a></li>`).join('')}
+        </ul>
+      </nav>
+      <div class="menu-rodape">
+        ${local ? `<p class="aviso-local">${icone('info')} Dados salvos só neste navegador.</p>` : ''}
+        <button type="button" class="botao-sec pequeno" data-sair>${icone('sair')} Sair da conta</button>
+      </div>
+    </aside>
+    <div class="fundo-menu" data-fechar-menu></div>
+    <div class="area-principal">
+      <header class="topo">
+        <button type="button" class="botao-icone contorno botao-menu" aria-label="Abrir menu" aria-expanded="false" aria-controls="menu-lateral" data-abrir-menu>${icone('menu')}</button>
+        <p class="topo-titulo" id="topo-titulo">Início</p>
+        ${seletorTema('tema')}
+        <div class="usuario">
+          <span class="avatar" aria-hidden="true">${ICONE_TEMA[perfil.temaPadrao]()}</span>
+          <span class="usuario-nome">${esc(perfil.nome)}${demo ? '<small>modo demonstração</small>' : ''}</span>
+          <button type="button" class="botao-icone" data-sair aria-label="Sair da conta" title="Sair da conta">${icone('sair')}</button>
+        </div>
+      </header>
+      <main id="conteudo" tabindex="-1"></main>
+    </div>
+    <nav class="nav-inferior" aria-label="Navegação rápida">
+      ${NAV_INFERIOR.map((id) => { const r = ROTAS.find((x) => x.id === id); return `<a href="#/${r.id}" data-rota="${r.id}">${icone(r.icone)}<span>${r.titulo}</span></a>`; }).join('')}
+      <button type="button" data-abrir-menu data-mais aria-controls="menu-lateral" aria-expanded="false">${icone('pontos')}<span>Mais</span></button>
+    </nav>`;
+  shell.hidden = false;
+
+  // Troca de tema no topo
+  shell.querySelectorAll('input[name="tema"]').forEach((input) => {
+    input.addEventListener('change', () => {
+      aplicarTema(input.value, { perfil: perfilAtual.id });
+      salvarTemaRemoto(perfilAtual, input.value);
+    });
+  });
+  removerOuvinteTema?.();
+  removerOuvinteTema = aoMudarTema((tema) => {
+    const marca = document.querySelector('.marca-icone');
+    if (marca) marca.innerHTML = ICONE_TEMA[tema]();
+    toast(`Tema ${TEMAS[tema].nome} aplicado`, 'sucesso', { duracao: 1800 });
+  });
+
+  // Menu no celular
+  const menu = shell.querySelector('#menu-lateral');
+  const fundo = shell.querySelector('.fundo-menu');
+  const botoesMenu = shell.querySelectorAll('[data-abrir-menu]');
+  const ajustarInert = () => { if (midiaCelular.matches && !menu.classList.contains('aberto')) menu.inert = true; else menu.inert = false; };
+  const abrirMenu = () => {
+    menu.classList.add('aberto'); fundo.classList.add('visivel'); ajustarInert();
+    botoesMenu.forEach((b) => b.setAttribute('aria-expanded', 'true'));
+    menu.querySelector('[aria-current="page"], .menu-link')?.focus();
+  };
+  const fecharMenu = (devolverFoco = false) => {
+    if (!menu.classList.contains('aberto')) return;
+    menu.classList.remove('aberto'); fundo.classList.remove('visivel'); ajustarInert();
+    botoesMenu.forEach((b) => b.setAttribute('aria-expanded', 'false'));
+    if (devolverFoco) shell.querySelector('.botao-menu')?.focus();
+  };
+  botoesMenu.forEach((b) => b.addEventListener('click', abrirMenu));
+  fundo.addEventListener('click', () => fecharMenu(true));
+  menu.addEventListener('click', (e) => { if (e.target.closest('a')) fecharMenu(); });
+  menu.addEventListener('keydown', (e) => { if (e.key === 'Escape') fecharMenu(true); });
+  midiaCelular.onchange = () => { if (!midiaCelular.matches) fecharMenu(); ajustarInert(); };
+  ajustarInert();
+
+  shell.querySelectorAll('[data-sair]').forEach((b) => b.addEventListener('click', encerrarSessao));
+}
+
+async function encerrarSessao() {
+  window.removeEventListener('hashchange', navegar);
+  limparPagina?.();
+  limparPagina = null;
+  removerOuvinteTema?.();
+  removerOuvinteTema = null;
+  try { await sair(); } catch (e) { console.warn(e); }
+  perfilAtual = null;
+  const shell = document.getElementById('app-shell');
+  shell.hidden = true;
+  shell.innerHTML = '';
+  history.replaceState(null, '', location.pathname + location.search);
+  toast('Você saiu da conta.', 'info', { duracao: 2500 });
+  await fluxoLogin();
+}
+
+// ------------------------------------------------------------------
+function rotaDoHash() {
+  const id = location.hash.replace(/^#\/?/, '').split(/[/?]/)[0] || 'inicio';
+  return ROTAS.find((r) => r.id === id) || ROTAS[0];
+}
+
+function focarTitulo() {
+  const h1 = document.querySelector('#conteudo h1');
+  if (h1) { h1.setAttribute('tabindex', '-1'); h1.focus({ preventScroll: true }); }
+}
+
+async function navegar({ focar = true } = {}) {
+  if (!perfilAtual) return;
+  const rota = rotaDoHash();
+  const minha = ++renderizacao;
+  const main = document.getElementById('conteudo');
+
+  document.querySelectorAll('[data-rota]').forEach((a) => {
+    if (a.dataset.rota === rota.id) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+  });
+  const mais = document.querySelector('[data-mais]');
+  if (mais) { if (NAV_INFERIOR.includes(rota.id)) mais.removeAttribute('aria-current'); else mais.setAttribute('aria-current', 'page'); }
+  document.getElementById('topo-titulo').textContent = rota.titulo;
+  document.title = `${rota.titulo} · Nosso Cantinho`;
+
+  limparPagina?.();
+  limparPagina = null;
+  main.innerHTML = '<div class="estado"><span class="spinner pequeno" aria-hidden="true"></span> Carregando…</div>';
+  main.dataset.pagina = rota.id;
+
+  try {
+    const modulo = await rota.modulo();
+    if (minha !== renderizacao) return;
+    // Cada página recebe um contêiner novo: ouvintes de eventos não "vazam" entre páginas
+    main.innerHTML = '';
+    const pagina = document.createElement('div');
+    pagina.className = `pagina pagina-${rota.id}`;
+    main.append(pagina);
+    const contexto = {
+      perfil: perfilAtual,
+      modo: modoAuth(),
+      armazenamento: storeAtual(),
+      irPara: (id) => { location.hash = `#/${id}`; },
+    };
+    const limpeza = await modulo.renderizar(pagina, contexto);
+    if (minha !== renderizacao) { if (typeof limpeza === 'function') limpeza(); return; }
+    limparPagina = typeof limpeza === 'function' ? limpeza : null;
+    window.scrollTo({ top: 0 });
+    if (focar) focarTitulo();
+  } catch (e) {
+    console.error(e);
+    if (minha !== renderizacao) return;
+    main.innerHTML = `
+      <div class="aviso erro" role="alert">${icone('alerta')}
+        <div><p><strong>Não foi possível abrir esta área.</strong></p><p>${esc(e.message || 'Erro inesperado.')}</p>
+        <p><button type="button" class="botao-sec pequeno" data-tentar>${icone('restaurar')} Tentar de novo</button></p></div>
+      </div>`;
+    main.querySelector('[data-tentar]').addEventListener('click', () => navegar());
+  }
+}
+
+iniciar().catch((e) => {
+  console.error(e);
+  document.getElementById('carregando').innerHTML = `<p>Algo deu errado ao abrir o site. Recarregue a página.</p>`;
+});

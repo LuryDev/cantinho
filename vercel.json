@@ -1,0 +1,15 @@
+{
+  "routes": [
+    {
+      "src": "/config.js",
+      "dest": "/api/config"
+    },
+    {
+      "src": "/(\\.env.*|server\\.mjs|lib/.*|supabase/.*)",
+      "status": 404
+    },
+    {
+      "handle": "filesystem"
+    }
+  ]
+}

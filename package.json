@@ -1,0 +1,13 @@
+{
+  "name": "nosso-cantinho",
+  "version": "0.1.0-beta",
+  "private": true,
+  "description": "Nosso Cantinho — site privado do casal (versão beta).",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
