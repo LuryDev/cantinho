@@ -1,4 +1,4 @@
-// Lê a configuração pública carregada por /config.js (gerada a partir do .env pelo server.mjs).
+// Lê a configuração pública carregada por /config.js (gerada a partir do .env pelo servidor-local.mjs).
 const bruto = window.NOSSO_CANTINHO_CONFIG || {};
 
 export const config = Object.freeze({

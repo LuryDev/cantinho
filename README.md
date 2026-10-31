@@ -12,7 +12,7 @@ Feito em **HTML, CSS e JavaScript puro** (módulos ES), sem framework e sem depe
 
 ```bash
 cd nosso-cantinho
-npm start          # ou: node server.mjs
+npm start          # ou: node servidor-local.mjs
 ```
 
 Abra **http://localhost:5173**. Não há nada para instalar (`npm install` não é necessário).
@@ -33,9 +33,9 @@ python3 -m http.server 5173
 nosso-cantinho/
 ├── index.html              # Página única; carrega CSS, config.js e js/app.js
 ├── config.exemplo.js       # Modelo da config pública (o /config.js real é gerado pelo servidor/Vercel)
-├── server.mjs              # Servidor local sem dependências + proxy do TMDB
+├── servidor-local.mjs              # Servidor local sem dependências + proxy do TMDB
 ├── api/                    # Funções da Vercel: config.js e tmdb/search.js
-├── lib/                    # Lógica compartilhada (config pública e TMDB) entre server.mjs e api/
+├── lib/                    # Lógica compartilhada (config pública e TMDB) entre servidor-local.mjs e api/
 ├── vercel.json             # Vercel: /config.js → função api/config
 ├── package.json            # Só o script "start"
 ├── .env.example            # Modelo do arquivo de ambiente
@@ -130,7 +130,7 @@ Como funciona a segurança: a função `meu_casal()` descobre o casal do usuári
    - linha 17 → `TMDB_API_KEY=` (chave v3).
 3. `npm start`. A Cinemateca passa a mostrar o campo de pesquisa.
 
-A chave fica **só no servidor** (`server.mjs`, rota `/api/tmdb/search`); o navegador nunca a recebe. Sem chave, a Cinemateca mostra um aviso de configuração e o **cadastro manual continua funcionando**. Na Vercel isso é feito pela função `api/tmdb/search.js` (veja a seção 6.1). Em outra hospedagem só estática, crie um backend equivalente e defina `tmdbProxy: true` nesse `config.js`.
+A chave fica **só no servidor** (`servidor-local.mjs`, rota `/api/tmdb/search`); o navegador nunca a recebe. Sem chave, a Cinemateca mostra um aviso de configuração e o **cadastro manual continua funcionando**. Na Vercel isso é feito pela função `api/tmdb/search.js` (veja a seção 6.1). Em outra hospedagem só estática, crie um backend equivalente e defina `tmdbProxy: true` nesse `config.js`.
 
 ---
 
@@ -167,7 +167,7 @@ O `.gitignore` já impede o envio do `.env`. Confira com `git status` antes do p
 - **Simulado (claramente sinalizado):** a entrada no modo demonstração (escolha de perfil, sem senha) e o conteúdo com selo EXEMPLO.
 - **Depende de serviços externos:**
   - Login real e sincronização → Supabase (código pronto em `js/auth.js` e `js/store/supabase.js`; **não testado contra um projeto real nesta beta**, porque nenhuma credencial foi fornecida).
-  - Pesquisa e pôsteres → TMDB (via `server.mjs`).
+  - Pesquisa e pôsteres → TMDB (via `servidor-local.mjs`).
   - Reprodução de vídeos e miniaturas → YouTube (player oficial; sem download nem remoção de anúncios/controles).
   - Fontes → Google Fonts (sem internet, o site usa fontes do sistema).
 

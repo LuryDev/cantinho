@@ -1,7 +1,7 @@
 /*
  * Configuração PÚBLICA do Nosso Cantinho.
  *
- * MODELO. Com `npm start` (server.mjs) ou na Vercel (api/config.js + vercel.json), o
+ * MODELO. Com `npm start` (servidor-local.mjs) ou na Vercel (api/config.js + vercel.json), o
  * /config.js é gerado automaticamente a partir das variáveis de ambiente — não precisa deste arquivo.
  *
  * Só em outra hospedagem puramente estática: copie este arquivo para `config.js` e preencha:
