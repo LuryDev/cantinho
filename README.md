@@ -32,11 +32,11 @@ python3 -m http.server 5173
 ```
 nosso-cantinho/
 ├── index.html              # Página única; carrega CSS, config.js e js/app.js
-├── config.js               # Config PÚBLICA (gerada pelo server.mjs a partir do .env)
+├── config.exemplo.js       # Modelo da config pública (o /config.js real é gerado pelo servidor/Vercel)
 ├── server.mjs              # Servidor local sem dependências + proxy do TMDB
 ├── api/                    # Funções da Vercel: config.js e tmdb/search.js
 ├── lib/                    # Lógica compartilhada (config pública e TMDB) entre server.mjs e api/
-├── vercel.json             # Rotas da Vercel (/config.js → função; bloqueia arquivos internos)
+├── vercel.json             # Vercel: /config.js → função api/config
 ├── package.json            # Só o script "start"
 ├── .env.example            # Modelo do arquivo de ambiente
 ├── css/
@@ -116,7 +116,7 @@ Enquanto o Supabase **não** estiver configurado:
    - `.env` linha 11 → `SUPABASE_ANON_KEY=eyJ...` (a **anon**; o servidor se recusa a iniciar se detectar uma `service_role`)
 8. `npm start` de novo. A tela de entrada passa a pedir **nome e senha**.
 
-**Na Vercel**, use as variáveis de ambiente (seção 6.1). **Em outra hospedagem só estática**, preencha `config.js` linha 13 (`supabaseUrl`) e linha 14 (`supabaseAnonKey`). Essas duas são públicas por natureza — quem protege os dados são as políticas RLS. **Nunca** coloque a `service_role` em nenhum arquivo do front-end.
+**Na Vercel**, use as variáveis de ambiente (seção 6.1). **Em outra hospedagem só estática**, copie `config.exemplo.js` para `config.js` e preencha `supabaseUrl` e `supabaseAnonKey`. Essas duas são públicas por natureza — quem protege os dados são as políticas RLS. **Nunca** coloque a `service_role` em nenhum arquivo do front-end.
 
 Como funciona a segurança: a função `meu_casal()` descobre o casal do usuário logado; todas as políticas comparam `casal_id = meu_casal()`, então o banco só devolve dados do próprio casal, mesmo que alguém altere o JavaScript. Usuários não conseguem criar perfis nem trocar de casal; só alteram `perfis.tema_preferido` e `casais.ajustes`. Fotos ficam em `memorias/<id-do-casal>/…` e são exibidas por URLs assinadas temporárias.
 
@@ -130,7 +130,7 @@ Como funciona a segurança: a função `meu_casal()` descobre o casal do usuári
    - linha 17 → `TMDB_API_KEY=` (chave v3).
 3. `npm start`. A Cinemateca passa a mostrar o campo de pesquisa.
 
-A chave fica **só no servidor** (`server.mjs`, rota `/api/tmdb/search`); o navegador nunca a recebe. Sem chave, a Cinemateca mostra um aviso de configuração e o **cadastro manual continua funcionando**. Na Vercel isso é feito pela função `api/tmdb/search.js` (veja a seção 6.1). Em outra hospedagem só estática, crie um backend equivalente e defina `tmdbProxy: true` no `config.js` linha 15.
+A chave fica **só no servidor** (`server.mjs`, rota `/api/tmdb/search`); o navegador nunca a recebe. Sem chave, a Cinemateca mostra um aviso de configuração e o **cadastro manual continua funcionando**. Na Vercel isso é feito pela função `api/tmdb/search.js` (veja a seção 6.1). Em outra hospedagem só estática, crie um backend equivalente e defina `tmdbProxy: true` nesse `config.js`.
 
 ---
 

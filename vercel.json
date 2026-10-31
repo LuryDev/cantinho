@@ -1,15 +1,8 @@
 {
-  "routes": [
-    {
-      "src": "/config.js",
-      "dest": "/api/config"
-    },
-    {
-      "src": "/(\\.env.*|server\\.mjs|lib/.*|supabase/.*)",
-      "status": 404
-    },
-    {
-      "handle": "filesystem"
-    }
+  "rewrites": [
+    { "source": "/config.js", "destination": "/api/config" }
+  ],
+  "headers": [
+    { "source": "/config.js", "headers": [{ "key": "Cache-Control", "value": "no-store" }] }
   ]
 }
