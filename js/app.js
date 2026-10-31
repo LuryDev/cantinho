@@ -6,7 +6,8 @@ import { TEMAS, aplicarTema, aplicarPreferencias, lerPreferencias, temaDeEntrada
 import { iniciarAuth, modoAuth, clienteSupabase, sair, salvarTemaRemoto, aoSairDaSessao } from './auth.js';
 import { mostrarLogin } from './login.js';
 import { mostrarBoasVindas } from './boas-vindas.js';
-import { definirStore, storeAtual } from './store/index.js';
+import { definirStore, storeAtual, listar } from './store/index.js';
+import { lerJuntos, normalizarJuntos, tempoAtualMs, relogio } from './juntos.js';
 import { criarStoreLocal } from './store/local.js';
 
 export const ROTAS = [
@@ -24,6 +25,9 @@ let perfilAtual = null;
 let limparPagina = null;
 let renderizacao = 0;
 let removerOuvinteTema = null;
+let intervaloAvisos = null;
+let intervaloRelogio = null;
+let estadoJuntos = null;
 const midiaCelular = window.matchMedia('(max-width: 920px)');
 
 // ------------------------------------------------------------------
@@ -66,11 +70,66 @@ async function abrirApp(perfil, { primeiraEntrada, animar }) {
   const animacao = animar ? mostrarBoasVindas(perfil) : null;
 
   window.addEventListener('hashchange', navegar);
+  const avisos = iniciarAvisos();
   await navegar({ focar: !animacao });
   if (animacao) {
     await animacao;
     focarTitulo();
   }
+  const novas = await avisos;
+  if (novas > 0 && primeiraEntrada !== null) {
+    toast(novas === 1 ? 'Você tem 1 cartinha nova!' : `Você tem ${novas} cartinhas novas!`, 'info', {
+      acao: { texto: 'Abrir', executar: () => { location.hash = '#/cartinhas'; } },
+    });
+  }
+}
+
+// ------------------------------------------------------------------
+// Avisos globais: cartinhas não lidas e cronômetro "juntos" no topo
+function desenharChipJuntos() {
+  const chip = document.querySelector('[data-chip-juntos]');
+  if (!chip) return;
+  const ativo = Boolean(estadoJuntos?.ativoDesde);
+  chip.hidden = !ativo;
+  if (ativo) chip.querySelector('[data-chip-tempo]').textContent = relogio(tempoAtualMs(estadoJuntos));
+}
+
+async function atualizarAvisos() {
+  if (!perfilAtual) return 0;
+  try {
+    const [cartas, juntos] = await Promise.all([listar('cartas'), lerJuntos()]);
+    const novas = cartas.filter((c) => c.para === perfilAtual.id && c.de !== perfilAtual.id && c.enviadaEm && !c.lidaEm).length;
+    document.querySelectorAll('[data-badge-cartas]').forEach((b) => {
+      b.hidden = !novas;
+      b.textContent = String(novas);
+      b.title = `${novas} ${novas === 1 ? 'cartinha nova' : 'cartinhas novas'}`;
+    });
+    estadoJuntos = juntos;
+    desenharChipJuntos();
+    return novas;
+  } catch {
+    return 0;
+  }
+}
+
+const aoMudarCartas = () => atualizarAvisos();
+const aoMudarJuntos = (e) => { estadoJuntos = normalizarJuntos(e.detail); desenharChipJuntos(); };
+
+function iniciarAvisos() {
+  pararAvisos();
+  window.addEventListener('nc:cartas-mudou', aoMudarCartas);
+  window.addEventListener('nc:juntos-mudou', aoMudarJuntos);
+  intervaloAvisos = setInterval(atualizarAvisos, 45000);
+  intervaloRelogio = setInterval(desenharChipJuntos, 1000);
+  return atualizarAvisos();
+}
+
+function pararAvisos() {
+  clearInterval(intervaloAvisos);
+  clearInterval(intervaloRelogio);
+  window.removeEventListener('nc:cartas-mudou', aoMudarCartas);
+  window.removeEventListener('nc:juntos-mudou', aoMudarJuntos);
+  estadoJuntos = null;
 }
 
 // ------------------------------------------------------------------
@@ -97,7 +156,7 @@ function montarEstrutura(perfil) {
       </a>
       <nav aria-label="Seções">
         <ul class="menu-lista">
-          ${ROTAS.map((r) => `<li><a class="menu-link" href="#/${r.id}" data-rota="${r.id}">${icone(r.icone)}<span>${r.titulo}</span></a></li>`).join('')}
+          ${ROTAS.map((r) => `<li><a class="menu-link" href="#/${r.id}" data-rota="${r.id}">${icone(r.icone)}<span>${r.titulo}</span>${r.id === 'cartinhas' ? '<span class="badge-menu" data-badge-cartas hidden></span>' : ''}</a></li>`).join('')}
         </ul>
       </nav>
       <div class="menu-rodape">
@@ -110,6 +169,9 @@ function montarEstrutura(perfil) {
       <header class="topo">
         <button type="button" class="botao-icone contorno botao-menu" aria-label="Abrir menu" aria-expanded="false" aria-controls="menu-lateral" data-abrir-menu>${icone('menu')}</button>
         <p class="topo-titulo" id="topo-titulo">Início</p>
+        <a class="chip-juntos" href="#/inicio" data-chip-juntos hidden title="Vocês estão juntos agora">
+          ${icone('coracao', 'cheio')}<span class="chip-rotulo">Juntos</span><span data-chip-tempo>00:00:00</span>
+        </a>
         ${seletorTema('tema')}
         <div class="usuario">
           <span class="avatar" aria-hidden="true">${ICONE_TEMA[perfil.temaPadrao]()}</span>
@@ -120,7 +182,7 @@ function montarEstrutura(perfil) {
       <main id="conteudo" tabindex="-1"></main>
     </div>
     <nav class="nav-inferior" aria-label="Navegação rápida">
-      ${NAV_INFERIOR.map((id) => { const r = ROTAS.find((x) => x.id === id); return `<a href="#/${r.id}" data-rota="${r.id}">${icone(r.icone)}<span>${r.titulo}</span></a>`; }).join('')}
+      ${NAV_INFERIOR.map((id) => { const r = ROTAS.find((x) => x.id === id); return `<a href="#/${r.id}" data-rota="${r.id}">${icone(r.icone)}<span>${r.titulo}</span>${id === 'cartinhas' ? '<span class="badge-menu" data-badge-cartas hidden></span>' : ''}</a>`; }).join('')}
       <button type="button" data-abrir-menu data-mais aria-controls="menu-lateral" aria-expanded="false">${icone('pontos')}<span>Mais</span></button>
     </nav>`;
   shell.hidden = false;
@@ -171,6 +233,7 @@ async function encerrarSessao() {
   limparPagina = null;
   removerOuvinteTema?.();
   removerOuvinteTema = null;
+  pararAvisos();
   try { await sair(); } catch (e) { console.warn(e); }
   perfilAtual = null;
   const shell = document.getElementById('app-shell');

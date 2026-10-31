@@ -30,6 +30,8 @@ export const seloExemplo = (texto = 'Exemplo') => `<span class="selo-exemplo" ti
 export function toast(mensagem, tipo = 'info', { acao, duracao = 4200 } = {}) {
   const area = document.getElementById('toasts');
   if (!area) return;
+  // No máximo 3 avisos na tela: o mais antigo sai
+  while (area.children.length >= 3) area.firstElementChild.remove();
   const el = document.createElement('div');
   el.className = `toast ${tipo}`;
   el.setAttribute('role', tipo === 'erro' ? 'alert' : 'status');

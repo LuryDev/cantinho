@@ -3,19 +3,39 @@ import { listar, salvar, remover } from '../store/index.js';
 import { icone } from '../ui/icones.js';
 import { adesivo, enfeitePorTema, ADESIVOS, PACOTES } from '../ui/ilustracoes.js';
 import { esc, toast, abrirModal, confirmar, formatarData, hojeISO, seloExemplo, marcarErro, limparErros } from '../ui/dom.js';
+import { PERFIS } from '../auth.js';
 import { temaAtual } from '../tema.js';
 import {
   htmlCarta, estiloPadrao, PAPEIS, FONTES, ALINHAMENTOS, MOLDURAS, CORES_PAPEL, CORES_TINTA, MAX_ADESIVOS,
 } from './carta-visual.js';
 
+/** Quem pode ver a cartinha: quem escreveu e, depois de enviada, quem recebeu. */
+export function cartaVisivelPara(c, perfilId) {
+  if (!c.de) return true; // cartinhas antigas/exemplos sem autor definido
+  if (c.de === perfilId) return true;
+  return c.para === perfilId && Boolean(c.enviadaEm);
+}
+
+function grupoDa(c, eu) {
+  if (c.enviadaEm && c.para === eu && c.de !== eu) return 'recebidas';
+  if (c.enviadaEm && c.de === eu) return 'enviadas';
+  return 'rascunhos';
+}
+
+const ABAS = { recebidas: 'Recebidas', enviadas: 'Enviadas', rascunhos: 'Rascunhos' };
+
 export async function renderizar(el, ctx) {
+  const eu = ctx.perfil.id;
+  const outro = Object.values(PERFIS).find((p) => p.id !== eu);
+  const nome = (id) => PERFIS[id]?.nome || '';
   let cartas = [];
   let modo = 'colecao';
+  let aba = 'recebidas';
 
   async function carregar() {
     el.innerHTML = '<div class="estado"><span class="spinner pequeno" aria-hidden="true"></span> Carregando cartinhas…</div>';
     try {
-      cartas = await listar('cartas');
+      cartas = (await listar('cartas')).filter((c) => cartaVisivelPara(c, eu));
     } catch (e) {
       el.innerHTML = `<div class="aviso erro" role="alert">${icone('alerta')}<p>${esc(e.message)}</p></div>`;
       return false;
@@ -23,84 +43,197 @@ export async function renderizar(el, ctx) {
     return true;
   }
 
+  const avisarMudanca = () => window.dispatchEvent(new CustomEvent('nc:cartas-mudou'));
+  const naoLida = (c) => grupoDa(c, eu) === 'recebidas' && !c.lidaEm;
+
   // ---------------- Coleção ----------------
-  function mostrarColecao({ focar = false } = {}) {
+  function htmlCartao(c) {
+    const grupo = grupoDa(c, eu);
+    const fechada = naoLida(c);
+    let meta = '';
+    if (grupo === 'recebidas') meta = `De ${esc(nome(c.de))} · ${esc(formatarData(c.enviadaEm))}`;
+    else if (grupo === 'enviadas') meta = `Para ${esc(nome(c.para))} · ${c.lidaEm ? `${icone('check')} lida em ${esc(formatarData(c.lidaEm))}` : 'ainda não lida'}`;
+    else meta = c.data ? `Rascunho · ${esc(formatarData(c.data))}` : 'Rascunho';
+    const podeEditar = grupo !== 'recebidas';
+    return `
+      <li class="cartao-carta ${fechada ? 'nao-lida' : ''}">
+        <button type="button" class="carta-miniatura" data-abrir="${esc(c.id)}" aria-label="${fechada ? `Abrir a cartinha nova de ${esc(nome(c.de))}` : `Abrir a cartinha ${esc(c.titulo)}`}">
+          ${fechada
+            ? `<span class="envelope-fechado grande" aria-hidden="true"><span class="selo-cera">${icone('coracao')}</span></span>`
+            : htmlCarta(c, { compacta: true })}
+        </button>
+        <div class="cartao-carta-info">
+          <div>
+            <h2 class="cartao-carta-titulo">${fechada ? 'Cartinha nova' : esc(c.titulo)} ${fechada ? '<span class="selo selo-nova">Nova</span>' : ''} ${c.exemplo ? seloExemplo() : ''}</h2>
+            <p class="meta">${meta}</p>
+          </div>
+          <div class="grupo-botoes acoes-carta">
+            <button type="button" class="botao-icone" data-abrir="${esc(c.id)}" aria-label="Abrir ${esc(c.titulo)}" title="Abrir">${icone('olho')}</button>
+            ${grupo === 'recebidas' ? `<button type="button" class="botao-icone" data-responder="${esc(c.id)}" aria-label="Responder ${esc(nome(c.de))}" title="Responder">${icone('desfazer')}</button>` : ''}
+            ${grupo === 'rascunhos' ? `<button type="button" class="botao-icone" data-enviar="${esc(c.id)}" aria-label="Enviar ${esc(c.titulo)} para ${esc(outro.nome)}" title="Enviar para ${esc(outro.nome)}">${icone('carta')}</button>` : ''}
+            ${podeEditar ? `<button type="button" class="botao-icone" data-editar="${esc(c.id)}" aria-label="Editar ${esc(c.titulo)}" title="Editar">${icone('editar')}</button>
+            <button type="button" class="botao-icone perigo" data-excluir="${esc(c.id)}" aria-label="Excluir ${esc(c.titulo)}" title="Excluir">${icone('lixeira')}</button>` : ''}
+          </div>
+        </div>
+      </li>`;
+  }
+
+  function mostrarColecao({ focar = false, focarAba = false } = {}) {
     modo = 'colecao';
-    const ordenadas = [...cartas].sort((a, b) => String(b.atualizadoEm || '').localeCompare(String(a.atualizadoEm || '')));
+    const porGrupo = { recebidas: [], enviadas: [], rascunhos: [] };
+    for (const c of cartas) porGrupo[grupoDa(c, eu)].push(c);
+    const data = (c) => String(c.enviadaEm || c.atualizadoEm || '');
+    Object.values(porGrupo).forEach((l) => l.sort((x, y) => data(y).localeCompare(data(x))));
+    porGrupo.recebidas.sort((x, y) => Number(naoLida(y)) - Number(naoLida(x)));
+    const novas = porGrupo.recebidas.filter(naoLida).length;
+    const lista = porGrupo[aba];
+    const vazios = {
+      recebidas: { t: 'Nenhuma cartinha recebida ainda', p: `Quando ${esc(outro.nome)} te mandar uma cartinha, ela chega aqui num envelope fechado.` },
+      enviadas: { t: 'Você ainda não enviou cartinhas', p: `Escreva uma e escolha "Enviar para ${esc(outro.nome)}".` },
+      rascunhos: { t: 'Nenhum rascunho', p: 'Cartinhas guardadas só com você, ainda não enviadas, ficam aqui.' },
+    };
     el.innerHTML = `
       <div class="cabecalho-secao">
         <div>
           <h1 class="titulo-pagina"><span class="enfeite-titulo" aria-hidden="true">${enfeitePorTema({ neutro: 'laco', lury: 'vela', manu: 'selo' })}</span>Cartinhas</h1>
-          <p>Escreva, enfeite e guarde as cartinhas de vocês.</p>
+          <p>Escreva, enfeite e mande cartinhas para ${esc(outro.nome)}.</p>
         </div>
         <button type="button" class="botao" data-nova>${icone('mais')} Nova cartinha</button>
       </div>
-      ${ctx.armazenamento.tipo === 'local' ? `<div class="aviso aviso-compacto">${icone('info')}<p>${esc(ctx.armazenamento.descricao)}</p></div>` : ''}
-      ${ordenadas.length ? `
-        <ul class="grade colecao-cartas" role="list">
-          ${ordenadas.map((c) => `
-            <li class="cartao-carta">
-              <button type="button" class="carta-miniatura" data-abrir="${esc(c.id)}" aria-label="Abrir a cartinha ${esc(c.titulo)}">
-                ${htmlCarta(c, { compacta: true })}
-              </button>
-              <div class="cartao-carta-info">
-                <div>
-                  <h2 class="cartao-carta-titulo">${esc(c.titulo)} ${c.exemplo ? seloExemplo() : ''}</h2>
-                  <p class="meta">${c.data ? esc(formatarData(c.data)) : 'Sem data'}${c.autor ? ` · por ${esc(c.autor)}` : ''}</p>
-                </div>
-                <div class="grupo-botoes acoes-carta">
-                  <button type="button" class="botao-icone" data-abrir="${esc(c.id)}" aria-label="Abrir ${esc(c.titulo)}" title="Abrir">${icone('olho')}</button>
-                  <button type="button" class="botao-icone" data-editar="${esc(c.id)}" aria-label="Editar ${esc(c.titulo)}" title="Editar">${icone('editar')}</button>
-                  <button type="button" class="botao-icone perigo" data-excluir="${esc(c.id)}" aria-label="Excluir ${esc(c.titulo)}" title="Excluir">${icone('lixeira')}</button>
-                </div>
-              </div>
-            </li>`).join('')}
-        </ul>` : `
-        <div class="vazio">
-          <span class="ilustracao" aria-hidden="true">${adesivo('coracao')}</span>
-          <h3>Nenhuma cartinha ainda</h3>
-          <p>Que tal escrever a primeira? Escolha um papel bonito, uma fonte e alguns enfeites.</p>
-          <button type="button" class="botao" data-nova>${icone('carta')} Escrever a primeira cartinha</button>
-        </div>`}`;
+      <div class="abas" role="tablist" aria-label="Cartinhas">
+        ${Object.entries(ABAS).map(([id, n]) => `
+          <button type="button" class="aba" role="tab" id="aba-cartas-${id}" aria-controls="painel-cartas" aria-selected="${aba === id}" tabindex="${aba === id ? 0 : -1}" data-aba="${id}">
+            ${n} <span class="contador">${porGrupo[id].length}</span>${id === 'recebidas' && novas ? `<span class="selo selo-nova">${novas} ${novas === 1 ? 'nova' : 'novas'}</span>` : ''}
+          </button>`).join('')}
+      </div>
+      <div id="painel-cartas" role="tabpanel" aria-labelledby="aba-cartas-${aba}">
+        ${lista.length ? `<ul class="grade colecao-cartas" role="list">${lista.map(htmlCartao).join('')}</ul>` : `
+          <div class="vazio">
+            <span class="ilustracao" aria-hidden="true">${adesivo('coracao')}</span>
+            <h3>${vazios[aba].t}</h3>
+            <p>${vazios[aba].p}</p>
+            <button type="button" class="botao" data-nova>${icone('carta')} Escrever cartinha</button>
+          </div>`}
+      </div>`;
     if (focar) el.querySelector('h1')?.focus();
+    if (focarAba) el.querySelector(`[data-aba="${aba}"]`)?.focus();
+  }
+
+  function mostrarLeitura(carta) {
+    const grupo = grupoDa(carta, eu);
+    const { el: modal, fechar } = abrirModal({
+      titulo: carta.titulo,
+      tamanho: 'largo',
+      corpo: `<div class="carta-leitura">${htmlCarta(carta)}</div>
+        ${grupo === 'recebidas' ? `<p class="meta centro">De ${esc(nome(carta.de))}, enviada em ${esc(formatarData(carta.enviadaEm, { day: 'numeric', month: 'long', year: 'numeric' }))}</p>` : ''}
+        ${grupo === 'enviadas' ? `<p class="meta centro">Para ${esc(nome(carta.para))} · ${carta.lidaEm ? `lida em ${esc(formatarData(carta.lidaEm, { day: 'numeric', month: 'long' }))}` : 'ainda não lida'}</p>` : ''}`,
+      rodape: `
+        <button type="button" class="botao-fantasma" data-fechar>Fechar</button>
+        ${grupo === 'recebidas'
+          ? `<button type="button" class="botao" data-responder-modal>${icone('desfazer')} Responder</button>`
+          : `<button type="button" class="botao-sec" data-editar-modal>${icone('editar')} Editar</button>`}`,
+    });
+    modal.querySelector('[data-editar-modal]')?.addEventListener('click', () => { fechar(); mostrarEditor(carta); });
+    modal.querySelector('[data-responder-modal]')?.addEventListener('click', () => { fechar(); mostrarEditor(null, { respostaA: carta }); });
+  }
+
+  async function marcarComoLida(carta) {
+    try {
+      const salvo = await salvar('cartas', { ...carta, lidaEm: new Date().toISOString() });
+      cartas = cartas.map((c) => (c.id === salvo.id ? salvo : c));
+      avisarMudanca();
+      return salvo;
+    } catch (e) {
+      toast(e.message, 'erro');
+      return carta;
+    }
   }
 
   function abrirCarta(id) {
     const carta = cartas.find((c) => c.id === id);
     if (!carta) return;
+    if (!naoLida(carta)) return mostrarLeitura(carta);
+
+    // Cartinha nova: primeiro o envelope fechado
     const { el: modal, fechar } = abrirModal({
-      titulo: carta.titulo,
-      tamanho: 'largo',
-      corpo: `<div class="carta-leitura">${htmlCarta(carta)}</div>`,
-      rodape: `
-        <button type="button" class="botao-fantasma" data-fechar>Fechar</button>
-        <button type="button" class="botao-sec" data-editar-modal>${icone('editar')} Editar</button>`,
+      rotulo: `Cartinha de ${nome(carta.de)}`,
+      tamanho: 'envelope-modal',
+      corpo: `
+        <div class="envelope-cena">
+          <p class="envelope-de">Uma cartinha de <strong>${esc(nome(carta.de))}</strong> para você</p>
+          <div class="envelope" data-envelope>
+            <div class="envelope-costas"></div>
+            <div class="envelope-papel" style="--papel:${esc(carta.estilo?.cor || '#fffaf5')}"><span>${esc(carta.titulo)}</span></div>
+            <div class="envelope-frente"></div>
+            <div class="envelope-aba"></div>
+            <span class="selo-cera" aria-hidden="true">${icone('coracao')}</span>
+          </div>
+          <div class="grupo-botoes">
+            <button type="button" class="botao-fantasma" data-fechar>Depois</button>
+            <button type="button" class="botao" data-abrir-envelope>${icone('carta')} Abrir</button>
+          </div>
+        </div>`,
     });
-    modal.querySelector('[data-editar-modal]').addEventListener('click', () => { fechar(); mostrarEditor(carta); });
+    const botao = modal.querySelector('[data-abrir-envelope]');
+    botao.focus();
+    botao.addEventListener('click', async () => {
+      botao.disabled = true;
+      modal.querySelector('[data-envelope]').classList.add('abrindo');
+      const lida = marcarComoLida(carta);
+      const espera = document.documentElement.dataset.movimento === 'reduzir' ? 0 : 1100;
+      await new Promise((r) => setTimeout(r, espera));
+      const atualizada = await lida;
+      fechar();
+      mostrarColecao();
+      mostrarLeitura(atualizada);
+    });
+  }
+
+  async function enviarRascunho(id) {
+    const carta = cartas.find((c) => c.id === id);
+    if (!carta) return;
+    const ok = await confirmar({ titulo: `Enviar para ${outro.nome}?`, mensagem: `"${carta.titulo}" vai aparecer nas cartinhas recebidas de ${outro.nome}.`, textoConfirmar: 'Enviar', perigo: false });
+    if (!ok) return;
+    try {
+      const salvo = await salvar('cartas', { ...carta, de: eu, para: outro.id, enviadaEm: new Date().toISOString(), lidaEm: null, exemplo: false });
+      cartas = cartas.map((c) => (c.id === salvo.id ? salvo : c));
+      toast(`Cartinha enviada para ${outro.nome}!`, 'sucesso');
+      aba = 'enviadas';
+      avisarMudanca();
+      mostrarColecao({ focarAba: true });
+    } catch (e) { toast(e.message, 'erro'); }
   }
 
   async function excluirCarta(id) {
     const carta = cartas.find((c) => c.id === id);
     if (!carta) return;
-    const ok = await confirmar({ titulo: 'Excluir cartinha?', mensagem: `"${carta.titulo}" será excluída e não poderá ser recuperada.` });
+    const enviada = grupoDa(carta, eu) === 'enviadas';
+    const ok = await confirmar({
+      titulo: 'Excluir cartinha?',
+      mensagem: enviada
+        ? `"${carta.titulo}" será excluída para você e para ${nome(carta.para)}. Não dá para desfazer.`
+        : `"${carta.titulo}" será excluída e não poderá ser recuperada.`,
+    });
     if (!ok) return;
     try {
       await remover('cartas', id);
       cartas = cartas.filter((c) => c.id !== id);
       toast('Cartinha excluída.', 'sucesso');
-      mostrarColecao();
-      el.querySelector('h1')?.focus();
+      avisarMudanca();
+      mostrarColecao({ focar: true });
     } catch (e) {
       toast(e.message, 'erro');
     }
   }
 
   // ---------------- Editor ----------------
-  function mostrarEditor(original = null) {
+  function mostrarEditor(original = null, { respostaA = null } = {}) {
     modo = 'editor';
     const base = original
       ? structuredClone(original)
-      : { titulo: '', destinatario: '', mensagem: '', data: hojeISO(), estilo: estiloPadrao(temaAtual()) };
+      : { titulo: respostaA ? `Resposta: ${respostaA.titulo}`.slice(0, 80) : '', destinatario: '', mensagem: '', data: hojeISO(), estilo: estiloPadrao(temaAtual()) };
+    const jaEnviada = Boolean(original?.enviadaEm);
+    const entregaInicial = jaEnviada ? 'enviar' : (original ? 'rascunho' : 'enviar');
     base.estilo = { ...estiloPadrao(temaAtual()), ...(base.estilo || {}) };
     let adesivosSel = [...(base.estilo.adesivos || [])];
     let alterado = false;
@@ -119,6 +252,18 @@ export async function renderizar(el, ctx) {
 
       <form class="editor-carta" id="form-carta" novalidate>
         <div class="editor-campos">
+          <section class="cartao formulario" aria-labelledby="sec-entrega">
+            <h2 id="sec-entrega" class="subtitulo">${icone('carta')} Entrega</h2>
+            ${jaEnviada ? `<p class="aviso">${icone('info')} Já enviada para ${esc(nome(original.para))} em ${esc(formatarData(original.enviadaEm))}. As mudanças aparecem para ${esc(nome(original.para))} também.</p>` : `
+            <fieldset>
+              <legend class="sr-only">O que fazer com a cartinha</legend>
+              <div class="opcoes entrega">
+                <label class="opcao"><input type="radio" name="entrega" value="enviar" ${entregaInicial === 'enviar' ? 'checked' : ''}><span>${icone('carta')} Enviar para ${esc(outro.nome)}</span></label>
+                <label class="opcao"><input type="radio" name="entrega" value="rascunho" ${entregaInicial === 'rascunho' ? 'checked' : ''}><span>${icone('salvar')} Guardar como rascunho</span></label>
+              </div>
+            </fieldset>`}
+          </section>
+
           <section class="cartao formulario" aria-labelledby="sec-conteudo">
             <h2 id="sec-conteudo" class="subtitulo">Conteúdo</h2>
             <div class="campo">
@@ -127,8 +272,8 @@ export async function renderizar(el, ctx) {
             </div>
             <div class="linha-campos">
               <div class="campo">
-                <label for="carta-para">Destinatário <span class="dica">(opcional)</span></label>
-                <input id="carta-para" name="destinatario" maxlength="40" value="${esc(base.destinatario || '')}">
+                <label for="carta-para">Como chamar <span class="dica">(opcional)</span></label>
+                <input id="carta-para" name="destinatario" maxlength="40" value="${esc(base.destinatario || '')}" placeholder="Ex.: meu amor">
               </div>
               <div class="campo">
                 <label for="carta-data">Data</label>
@@ -216,7 +361,7 @@ export async function renderizar(el, ctx) {
           </div>
           <div class="previa-carta" id="previa-carta"></div>
           <div class="grupo-botoes acoes-editor">
-            <button type="submit" class="botao">${icone('salvar')} ${original ? 'Salvar alterações' : 'Salvar cartinha'}</button>
+            <button type="submit" class="botao" data-botao-salvar></button>
             <button type="button" class="botao-fantasma" data-voltar>Cancelar</button>
           </div>
         </aside>
@@ -248,7 +393,19 @@ export async function renderizar(el, ctx) {
       };
     }
 
+    function entregaEscolhida() {
+      return jaEnviada ? 'enviar' : (form.querySelector('input[name="entrega"]:checked')?.value || 'rascunho');
+    }
+
+    function atualizarBotao() {
+      const b = form.querySelector('[data-botao-salvar]');
+      if (jaEnviada) b.innerHTML = `${icone('salvar')} Salvar alterações`;
+      else if (entregaEscolhida() === 'enviar') b.innerHTML = `${icone('carta')} Enviar para ${esc(outro.nome)}`;
+      else b.innerHTML = `${icone('salvar')} Salvar rascunho`;
+    }
+
     function atualizarPrevia() {
+      atualizarBotao();
       const atual = estadoAtual();
       previa.innerHTML = htmlCarta({ ...atual, titulo: atual.titulo || 'Título da cartinha' });
       contador.textContent = `${form.elements.mensagem.value.length} de 5000 caracteres`;
@@ -296,7 +453,11 @@ export async function renderizar(el, ctx) {
       const doc = estadoAtual();
       if (!doc.titulo) return marcarErro(form.elements.titulo, 'Dê um título para a cartinha.');
       if (!doc.mensagem.trim()) return marcarErro(form.elements.mensagem, 'Escreva a mensagem.');
-      if (!original) doc.autor = ctx.perfil.nome;
+      if (!original) { doc.autor = ctx.perfil.nome; doc.de = eu; }
+      if (!doc.de) doc.de = eu; // cartinhas antigas passam a ter autor
+      const enviar = !jaEnviada && entregaEscolhida() === 'enviar';
+      if (enviar) { doc.para = outro.id; doc.enviadaEm = new Date().toISOString(); doc.lidaEm = null; }
+      if (respostaA) doc.respostaA = respostaA.id;
       doc.exemplo = false;
       const botao = form.querySelector('button[type="submit"]');
       botao.disabled = true;
@@ -304,8 +465,11 @@ export async function renderizar(el, ctx) {
         const salvo = await salvar('cartas', doc);
         const i = cartas.findIndex((c) => c.id === salvo.id);
         if (i >= 0) cartas[i] = salvo; else cartas.unshift(salvo);
-        toast(original ? 'Cartinha atualizada!' : 'Cartinha salva!', 'sucesso');
+        toast(enviar ? `Cartinha enviada para ${outro.nome}!` : (original ? 'Cartinha atualizada!' : 'Rascunho guardado.'), 'sucesso');
         if (location.hash.includes('?')) history.replaceState(null, '', '#/cartinhas');
+        aba = grupoDa(salvo, eu);
+        alterado = false;
+        window.dispatchEvent(new CustomEvent('nc:cartas-mudou'));
         mostrarColecao({ focar: true });
       } catch (err) {
         toast(err.message, 'erro');
@@ -324,12 +488,40 @@ export async function renderizar(el, ctx) {
     const b = e.target.closest('button');
     if (!b) return;
     if (b.hasAttribute('data-nova')) mostrarEditor();
+    else if (b.dataset.aba) { aba = b.dataset.aba; mostrarColecao({ focarAba: true }); }
     else if (b.dataset.abrir) abrirCarta(b.dataset.abrir);
+    else if (b.dataset.responder) mostrarEditor(null, { respostaA: cartas.find((c) => c.id === b.dataset.responder) });
+    else if (b.dataset.enviar) enviarRascunho(b.dataset.enviar);
     else if (b.dataset.editar) mostrarEditor(cartas.find((c) => c.id === b.dataset.editar));
     else if (b.dataset.excluir) excluirCarta(b.dataset.excluir);
   });
 
+  // Setas do teclado nas abas
+  el.addEventListener('keydown', (e) => {
+    const atual = e.target.closest('[data-aba]');
+    if (modo !== 'colecao' || !atual || !['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+    e.preventDefault();
+    const ids = Object.keys(ABAS);
+    const i = ids.indexOf(atual.dataset.aba);
+    aba = ids[(i + (e.key === 'ArrowRight' ? 1 : -1) + ids.length) % ids.length];
+    mostrarColecao({ focarAba: true });
+  });
+
   if (!(await carregar())) return;
-  if (/[?&]nova\b/.test(location.hash)) mostrarEditor();
-  else mostrarColecao();
+  const parametros = new URLSearchParams(location.hash.split('?')[1] || '');
+  const temNova = cartas.some(naoLida);
+  if (!temNova && !cartas.some((c) => grupoDa(c, eu) === 'recebidas')) {
+    aba = cartas.some((c) => grupoDa(c, eu) === 'rascunhos') && !cartas.some((c) => grupoDa(c, eu) === 'enviadas') ? 'rascunhos' : (cartas.some((c) => grupoDa(c, eu) === 'enviadas') ? 'enviadas' : 'recebidas');
+  }
+  if (parametros.has('nova')) {
+    mostrarEditor();
+  } else if (parametros.get('abrir')) {
+    const alvo = cartas.find((c) => c.id === parametros.get('abrir'));
+    history.replaceState(null, '', '#/cartinhas');
+    if (alvo) aba = grupoDa(alvo, eu);
+    mostrarColecao();
+    if (alvo) abrirCarta(alvo.id);
+  } else {
+    mostrarColecao();
+  }
 }

@@ -1,10 +1,32 @@
 // Listas do casal: listas com categorias, itens, conclusão e progresso.
 import { listar, salvar, remover } from '../store/index.js';
 import { icone } from '../ui/icones.js';
-import { adesivo, enfeitePorTema } from '../ui/ilustracoes.js';
+import { adesivo, enfeitePorTema, ADESIVOS, PACOTES } from '../ui/ilustracoes.js';
+import { PERFIS } from '../auth.js';
+import { temaAtual } from '../tema.js';
 import { esc, toast, abrirModal, confirmar, gerarId, seloExemplo, lerFormulario, marcarErro, limparErros, normalizarTexto } from '../ui/dom.js';
 
 const CATEGORIAS = ['Passeios', 'Filmes', 'Viagens', 'Restaurantes', 'Metas', 'Coisas para fazer juntos'];
+
+// Estilo de cada lista (escolhido no formulário da lista)
+const CORES_LISTA = {
+  rosa: { nome: 'Rosa antigo', cor: '#a8506b' },
+  vinho: { nome: 'Vinho', cor: '#7d2440' },
+  lavanda: { nome: 'Lavanda', cor: '#6e5fa3' },
+  salvia: { nome: 'Sálvia', cor: '#5d7a55' },
+  mostarda: { nome: 'Mostarda', cor: '#a87a1c' },
+  terracota: { nome: 'Terracota', cor: '#a8532f' },
+  azul: { nome: 'Azul', cor: '#3f6893' },
+  grafite: { nome: 'Grafite', cor: '#4d4852' },
+};
+const PAPEIS_LISTA = {
+  simples: 'Simples',
+  caderno: 'Caderno',
+  postit: 'Post-it',
+  quadriculado: 'Quadriculado',
+  kraft: 'Kraft',
+};
+const estiloPadraoLista = () => ({ cor: temaAtual() === 'lury' ? 'vinho' : temaAtual() === 'manu' ? 'mostarda' : 'rosa', papel: 'simples', adesivo: '' });
 
 export async function renderizar(el, ctx) {
   let listas = [];
@@ -24,13 +46,16 @@ export async function renderizar(el, ctx) {
     return { total, feitos, pct: total ? Math.round((feitos / total) * 100) : 0 };
   };
 
+  const nome = (id) => PERFIS[id]?.nome || '';
+
   function htmlItem(lista, item) {
+    const autoria = item.feito && item.feitoPor ? `feito por ${nome(item.feitoPor)}` : (item.por ? `por ${nome(item.por)}` : '');
     return `
       <li class="item-lista ${item.feito ? 'feito' : ''}" data-item="${esc(item.id)}">
         <label class="item-check">
           <input type="checkbox" data-alternar ${item.feito ? 'checked' : ''}>
           <span class="caixa" aria-hidden="true">${icone('check')}</span>
-          <span class="item-texto">${esc(item.texto)}</span>
+          <span class="item-texto">${esc(item.texto)}${autoria ? ` <span class="item-autor">${esc(autoria)}</span>` : ''}</span>
         </label>
         <button type="button" class="botao-icone" data-editar-item aria-label="Editar item: ${esc(item.texto)}">${icone('editar')}</button>
         <button type="button" class="botao-icone perigo" data-excluir-item aria-label="Excluir item: ${esc(item.texto)}">${icone('lixeira')}</button>
@@ -42,13 +67,17 @@ export async function renderizar(el, ctx) {
     const pendentes = (l.itens || []).filter((i) => !i.feito);
     const feitos = (l.itens || []).filter((i) => i.feito);
     const idTitulo = `lista-${l.id}-titulo`;
+    const estilo = { ...estiloPadraoLista(), ...(l.estilo || {}) };
+    const cor = (CORES_LISTA[estilo.cor] || CORES_LISTA.rosa).cor;
     return `
-      <article class="cartao lista-cartao" data-lista="${esc(l.id)}" aria-labelledby="${idTitulo}">
+      <article class="cartao lista-cartao lista-papel-${esc(estilo.papel)}" style="--lista-cor:${cor}" data-lista="${esc(l.id)}" aria-labelledby="${idTitulo}">
+        ${estilo.adesivo && ADESIVOS[estilo.adesivo] ? `<span class="lista-adesivo" aria-hidden="true">${adesivo(estilo.adesivo)}</span>` : ''}
         <header class="lista-topo">
           <div class="lista-titulos">
             <span class="selo">${esc(l.categoria || 'Sem categoria')}</span> ${l.exemplo ? seloExemplo() : ''}
             <h2 id="${idTitulo}">${esc(l.titulo)}</h2>
             ${l.descricao ? `<p class="lista-desc">${esc(l.descricao)}</p>` : ''}
+            ${l.criadoPor ? `<p class="lista-autor">Criada por ${esc(nome(l.criadoPor))}</p>` : ''}
           </div>
           <div class="lista-acoes">
             <button type="button" class="botao-icone" data-editar-lista aria-label="Renomear ou editar a lista ${esc(l.titulo)}" title="Editar lista">${icone('editar')}</button>
@@ -86,7 +115,7 @@ export async function renderizar(el, ctx) {
       <div class="cabecalho-secao">
         <div>
           <h1 class="titulo-pagina"><span class="enfeite-titulo" aria-hidden="true">${enfeitePorTema({ neutro: 'flor', lury: 'aranha', manu: 'folhagem' })}</span>Listas</h1>
-          <p>Planos, desejos e coisinhas para fazer juntos.</p>
+          <p>Planos, desejos e coisinhas para fazer juntos. Tudo o que um muda, o outro vê.</p>
         </div>
         <button type="button" class="botao" data-nova-lista>${icone('mais')} Nova lista</button>
       </div>
@@ -129,6 +158,7 @@ export async function renderizar(el, ctx) {
 
   function formularioLista(lista = null) {
     const categoriaPersonalizada = lista && lista.categoria && !CATEGORIAS.includes(lista.categoria);
+    const estiloAtual = { ...estiloPadraoLista(), ...(lista?.estilo || {}) };
     const { el: modal, fechar } = abrirModal({
       titulo: lista ? 'Editar lista' : 'Nova lista',
       corpo: `
@@ -152,6 +182,28 @@ export async function renderizar(el, ctx) {
             <label for="lista-cat-livre">Nome da categoria</label>
             <input id="lista-cat-livre" name="categoriaLivre" maxlength="30" value="${categoriaPersonalizada ? esc(lista.categoria) : ''}">
           </div>
+          <fieldset>
+            <legend>Cor</legend>
+            <div class="opcoes cores">
+              ${Object.entries(CORES_LISTA).map(([id, c]) => `
+                <label class="opcao cor" title="${c.nome}"><input type="radio" name="cor" value="${id}" ${estiloAtual.cor === id ? 'checked' : ''} aria-label="${c.nome}"><span style="--c:${c.cor}"></span></label>`).join('')}
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>Papel</legend>
+            <div class="opcoes">
+              ${Object.entries(PAPEIS_LISTA).map(([id, n]) => `
+                <label class="opcao"><input type="radio" name="papel" value="${id}" ${estiloAtual.papel === id ? 'checked' : ''}><span><i class="amostra-lista lista-papel-${id}" aria-hidden="true"></i>${n}</span></label>`).join('')}
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>Adesivo</legend>
+            <div class="enfeites">
+              <label class="enfeite-opcao" title="Sem adesivo"><input type="radio" name="adesivo" value="" ${!estiloAtual.adesivo ? 'checked' : ''}><span class="sem-adesivo">${icone('fechar')}<span class="sr-only">Sem adesivo</span></span></label>
+              ${[temaAtual(), ...Object.keys(PACOTES).filter((x) => x !== temaAtual())].flatMap((pk) => PACOTES[pk].itens).map((id) => `
+                <label class="enfeite-opcao" title="${ADESIVOS[id].nome}"><input type="radio" name="adesivo" value="${id}" ${estiloAtual.adesivo === id ? 'checked' : ''}><span>${adesivo(id)}<span class="sr-only">${ADESIVOS[id].nome}</span></span></label>`).join('')}
+            </div>
+          </fieldset>
         </form>`,
       rodape: `<button type="button" class="botao-fantasma" data-fechar>Cancelar</button>
                <button type="submit" form="form-lista" class="botao">${icone('salvar')} ${lista ? 'Salvar' : 'Criar lista'}</button>`,
@@ -174,9 +226,10 @@ export async function renderizar(el, ctx) {
         if (!d.categoriaLivre) return marcarErro(form.elements.categoriaLivre, 'Escreva o nome da categoria.');
         categoria = d.categoriaLivre;
       }
+      const estilo = { cor: d.cor || estiloAtual.cor, papel: d.papel || 'simples', adesivo: d.adesivo || '' };
       const doc = lista
-        ? { ...lista, titulo: d.titulo, descricao: d.descricao, categoria, exemplo: false }
-        : { titulo: d.titulo, descricao: d.descricao, categoria, itens: [] };
+        ? { ...lista, titulo: d.titulo, descricao: d.descricao, categoria, estilo, exemplo: false }
+        : { titulo: d.titulo, descricao: d.descricao, categoria, estilo, itens: [], criadoPor: ctx.perfil.id };
       try {
         const salvo = await salvar('listas', doc);
         if (lista) listas = listas.map((l) => (l.id === salvo.id ? salvo : l));
@@ -283,6 +336,7 @@ export async function renderizar(el, ctx) {
     if (!item) return;
     item.feito = e.target.checked;
     item.concluidoEm = item.feito ? new Date().toISOString() : null;
+    item.feitoPor = item.feito ? ctx.perfil.id : null;
     if (await persistir(lista)) {
       redesenharLista(lista.id, `[data-item="${CSS.escape(itemId)}"] [data-alternar]`);
       const p = progresso(lista);
@@ -305,7 +359,7 @@ export async function renderizar(el, ctx) {
       toast('Esse item já está na lista.', 'info');
       return;
     }
-    lista.itens.push({ id: gerarId(), texto, feito: false });
+    lista.itens.push({ id: gerarId(), texto, feito: false, por: ctx.perfil.id });
     if (await persistir(lista)) redesenharLista(lista.id, 'input[name="texto"]');
     else lista.itens.pop();
   });

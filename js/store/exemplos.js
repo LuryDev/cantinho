@@ -10,12 +10,14 @@ export function dadosDeExemplo() {
     cartas: [
       {
         id: 'exemplo-carta-1', exemplo: true, criadoEm: t, atualizadoEm: t,
+        de: 'lury', para: 'manu', enviadaEm: t, lidaEm: null,
         titulo: 'Cartinha de exemplo', destinatario: '', data: '',
         mensagem: 'Este é um texto de demonstração para mostrar como as cartinhas ficam guardadas aqui.\n\nVocê pode editar este exemplo ou excluí-lo e escrever a primeira cartinha de verdade. Escolha o papel, a cor, a fonte e os enfeites que combinam com o momento.',
         estilo: { papel: 'pautado', cor: '#fff4f6', tinta: 'auto', fonte: 'caveat', alinhamento: 'esquerda', moldura: 'delicada', adesivos: ['coracao', 'flor', 'brilho'] },
       },
       {
         id: 'exemplo-carta-2', exemplo: true, criadoEm: t, atualizadoEm: t,
+        de: 'manu', para: 'lury', enviadaEm: t, lidaEm: null,
         titulo: 'Exemplo: bilhete vintage', destinatario: '', data: '',
         mensagem: 'Exemplo de cartinha com papel envelhecido, carimbo e girassóis.\n\nTroque este texto pelo que quiser dizer.',
         estilo: { papel: 'envelhecido', cor: '#f8e7c2', tinta: 'auto', fonte: 'courier', alinhamento: 'esquerda', moldura: 'vintage', adesivos: ['girassol', 'carimbo', 'raposa'] },
@@ -31,6 +33,7 @@ export function dadosDeExemplo() {
       {
         id: 'exemplo-lista-1', exemplo: true, criadoEm: t, atualizadoEm: t,
         titulo: 'Filmes para assistir', descricao: 'Lista de exemplo — troque pelos filmes de vocês.', categoria: 'Filmes',
+        estilo: { cor: 'vinho', papel: 'caderno', adesivo: 'brilho' },
         itens: [
           { id: 'ex-i1', texto: 'Um clássico de animação', feito: false },
           { id: 'ex-i2', texto: 'Uma comédia romântica', feito: true },
@@ -40,6 +43,7 @@ export function dadosDeExemplo() {
       {
         id: 'exemplo-lista-2', exemplo: true, criadoEm: t, atualizadoEm: t,
         titulo: 'Passeios que queremos fazer', descricao: 'Ideias genéricas de exemplo.', categoria: 'Passeios',
+        estilo: { cor: 'salvia', papel: 'postit', adesivo: 'folhagem' },
         itens: [
           { id: 'ex-i4', texto: 'Piquenique no parque', feito: false },
           { id: 'ex-i5', texto: 'Ver o pôr do sol', feito: false },

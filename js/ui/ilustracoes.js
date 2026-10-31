@@ -123,7 +123,7 @@ export function renderizarDecoracao(tema) {
   const alvo = document.getElementById('decoracao');
   if (!alvo) return;
   alvo.innerHTML = (DECORACOES[tema] || [])
-    .map((d, i) => `<div class="enfeite ${d.opcional ? 'opcional' : ''}" style="left:${d.x};top:${d.y};--t:${d.t}px;--o:${d.o};--r:${d.r}deg;--d:${7 + (i % 4) * 1.5}s;margin-left:-${Math.round(d.t / 2)}px">${adesivo(d.id)}</div>`)
+    .map((d, i) => `<div class="enfeite ${d.opcional ? 'opcional' : ''}" style="left:${d.x};top:${d.y};--t:${d.t}px;--o:${(d.o * 0.55).toFixed(2)};--r:${d.r}deg;--d:${7 + (i % 4) * 1.5}s;margin-left:-${Math.round(d.t / 2)}px">${adesivo(d.id)}</div>`)
     .join('');
 }
 

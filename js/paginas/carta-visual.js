@@ -17,7 +17,7 @@ export const FONTES = {
   cormorant: { nome: 'Clássica (Cormorant)', css: '"Cormorant Garamond", Georgia, serif', escala: 1.2 },
   courier: { nome: 'Máquina de escrever (Courier)', css: '"Courier Prime", "Courier New", monospace', escala: 1 },
   fraunces: { nome: 'Vintage (Fraunces)', css: '"Fraunces", Georgia, serif', escala: 1.02 },
-  nunito: { nome: 'Simples (Nunito)', css: '"Nunito", system-ui, sans-serif', escala: 1 },
+  nunito: { nome: 'Simples (DM Sans)', css: '"DM Sans", system-ui, sans-serif', escala: 1 },
 };
 
 export const ALINHAMENTOS = {

@@ -75,9 +75,10 @@ nosso-cantinho/
 | **Entrada** | Perfis Manu e Lury. Sessão mantida ao atualizar; botão **Sair** em todo o app. |
 | **Boas-vindas** | Manu: "Bem-vinda, Manu!" com girassóis crescendo, pétalas e raposa. Lury: "Bem-vindo, Lury!" com lua, castelo e morcegos voando. Dura ~4 s, tem botão **Pular animação** (ou Esc) e vira cena estática com movimento reduzido. Depois entra com o tema do perfil. |
 | **Temas** | Neutro, Lury e Manu. Troca imediata pelo topo ou por **Aparência**; muda cores, fontes, fundos, ilustrações, molduras, galeria e a sala de cinema. Salvo por perfil. |
-| **Início** | Frase do tema, foto do casal (ou ilustração), contador de anos/meses/dias com data editável, atalhos, memórias recentes e cartinha em destaque. |
-| **Cartinhas** | Editor com título, destinatário (opcional), data e mensagem; papel (6), cor do papel, cor da tinta, fonte (6), alinhamento, moldura (4) e até 6 enfeites dos três temas. Prévia ao vivo e em tamanho grande. Coleção com abrir, editar e excluir (com confirmação). |
-| **Listas** | Criar/renomear/excluir listas com descrição e categoria (6 sugeridas + personalizada); adicionar, editar, concluir e excluir itens (com "Desfazer"); barra de progresso; filtro por categoria. |
+| **Início** | Frase do tema, foto do casal (ou ilustração), aviso de cartinha nova, **"Estamos juntos?"**, contador de anos/meses/dias com data editável, atalhos, memórias recentes e cartinha em destaque. |
+| **Estamos juntos?** | Um botão liga um cronômetro compartilhado: os dois perfis veem o mesmo tempo correndo (também no topo de todas as páginas). Ao encerrar, dá para anotar "como foi" e corrigir o horário de término. Guarda o total juntos, número de encontros, o maior encontro e o histórico (com exclusão). |
+| **Cartinhas** | **Enviar para o outro perfil** ou guardar como rascunho. Abas Recebidas / Enviadas / Rascunhos; cartinha nova chega num envelope fechado com selo de cera que se abre ao clicar, contador de novas no menu, "lida em…" para quem enviou e botão **Responder**. Rascunhos não aparecem para o outro perfil. Editor com título, como chamar (opcional), data e mensagem; papel (6), cor do papel, cor da tinta, fonte (6), alinhamento, moldura (4) e até 6 enfeites dos três temas. Prévia ao vivo e em tamanho grande. Coleção com abrir, editar e excluir (com confirmação). |
+| **Listas** | Compartilhadas entre os dois, mostrando quem criou a lista, quem adicionou cada item e quem concluiu. Estilo por lista: cor (8), papel (simples, caderno, post-it, quadriculado, kraft) e adesivo. Criar/renomear/excluir listas com descrição e categoria (6 sugeridas + personalizada); adicionar, editar, concluir e excluir itens (com "Desfazer"); barra de progresso; filtro por categoria. |
 | **Cinemateca** | Pesquisa no TMDB com pôsteres (quando configurado), cadastro manual sempre disponível, abas Queremos assistir / Assistindo / Assistidos, detalhes com observações, mudança de status, remoção e bloqueio de duplicatas. |
 | **Cinema** | Sala com letreiro, cortinas, moldura e poltronas (decoração muda com o tema). Carrega vídeo por link ou ID, player oficial do YouTube, tela cheia, favoritos com miniatura e título editável. Vídeos que não permitem incorporação mostram aviso amigável + link para o YouTube. |
 | **Memórias** | Galeria (polaroid no tema Manu, moldura gótica no Lury), visualização ampliada com setas, envio de foto ou URL, legenda e data opcionais. |
@@ -178,7 +179,8 @@ O `.gitignore` já impede o envio do `.env`. Confira com `git status` antes do p
 - Modo local: espaço limitado do navegador (~5 MB). As fotos são reduzidas, mas cabem algumas dezenas.
 - No Supabase, os campos de cada item ficam numa coluna `dados` (jsonb) e os itens das listas ficam dentro da própria lista. É simples e seguro, mas deve ser normalizado depois (ex.: tabela `itens_lista`).
 - No modo Supabase, a foto é enviada assim que é escolhida; se a pessoa cancelar o formulário, o arquivo fica no bucket.
-- Não há edição simultânea em tempo real (Realtime) — atualize a página para ver mudanças feitas no outro aparelho.
+- Não há Realtime: o contador de cartinhas novas e o cronômetro "juntos" se atualizam a cada 30–45 s; o resto, ao abrir a página.
+- Rascunhos de cartinhas ficam escondidos na interface do outro perfil, mas no banco o casal inteiro tem acesso às linhas (RLS por casal). Para sigilo total, criar uma política que esconda rascunhos de quem não é o autor.
 - O título do vídeo é preenchido automaticamente quando o player do YouTube informa; senão, a pessoa digita.
 - Sem modo offline/PWA.
 

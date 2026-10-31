@@ -4,7 +4,7 @@
 import { renderizarDecoracao } from './ui/ilustracoes.js';
 
 export const TEMAS = {
-  neutro: { nome: 'Neutro', descricao: 'Branco, rosa-claro, blush e creme. Fofo e delicado.', corMeta: '#fff7f5' },
+  neutro: { nome: 'Neutro', descricao: 'Linho, rosa antigo e creme. Leve e aconchegante.', corMeta: '#f7f2ee' },
   lury: { nome: 'Lury', descricao: 'Preto, vinho e roxo profundo. Romance gótico — sem sustos.', corMeta: '#140b13' },
   manu: { nome: 'Manu', descricao: 'Amarelo girassol, laranja e creme. Vintage e acolhedor.', corMeta: '#fbf2df' },
 };

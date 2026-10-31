@@ -2,7 +2,10 @@
 import { listar, obterAjustes, salvarAjustes, enviarImagem } from '../store/index.js';
 import { icone } from '../ui/icones.js';
 import { adesivo, cenaCasal } from '../ui/ilustracoes.js';
-import { esc, toast, confirmar, formatarData, seloExemplo, hojeISO } from '../ui/dom.js';
+import { esc, toast, confirmar, formatarData, seloExemplo, hojeISO, abrirModal, lerFormulario } from '../ui/dom.js';
+import { PERFIS } from '../auth.js';
+import { normalizarJuntos, comecarJuntos, encerrarJuntos, cancelarJuntos, removerEncontro, lerJuntos, tempoAtualMs, relogio, duracaoPorExtenso } from '../juntos.js';
+import { cartaVisivelPara } from './cartinhas.js';
 import { temaAtual, aoMudarTema } from '../tema.js';
 import { htmlCarta } from './carta-visual.js';
 
@@ -41,13 +44,144 @@ export async function renderizar(el, ctx) {
       obterAjustes(), listar('cartas'), listar('listas'), listar('filmes'), listar('videos'), listar('memorias'),
     ]);
     ajustes = aj || {};
-    dados = { cartas, listas, filmes, videos, memorias };
+    // Cada pessoa só vê as cartinhas que escreveu ou que recebeu (nunca o rascunho da outra)
+    dados = { cartas: cartas.filter((c) => cartaVisivelPara(c, ctx.perfil.id)), listas, filmes, videos, memorias };
   } catch (e) {
     el.innerHTML = `<div class="aviso erro" role="alert">${icone('alerta')}<p>${esc(e.message)}</p></div>`;
     return;
   }
 
   const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
+  let juntos = normalizarJuntos(ajustes.juntos);
+  const nomePerfil = (id) => PERFIS[id]?.nome || '';
+  const hora = (iso) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+  function htmlJuntos() {
+    const j = juntos;
+    const maior = j.encontros.reduce((m, e) => Math.max(m, Number(e.duracaoMs) || 0), 0);
+    const estatisticas = `
+      <dl class="juntos-stats">
+        <div><dt>Total juntos</dt><dd data-juntos-total>${duracaoPorExtenso(j.totalMs + tempoAtualMs(j))}</dd></div>
+        <div><dt>Encontros</dt><dd>${j.encontros.length}</dd></div>
+        <div><dt>Maior encontro</dt><dd>${maior ? duracaoPorExtenso(maior) : '—'}</dd></div>
+      </dl>
+      ${j.encontros.length ? `<button type="button" class="botao-fantasma pequeno" data-historico-juntos>${icone('calendario')} Ver nossos encontros</button>` : ''}`;
+    if (j.ativoDesde) {
+      return `
+        <div class="juntos-ativo">
+          <p class="juntos-status"><span class="pulso" aria-hidden="true"></span>
+            Juntos agora · desde ${hora(j.ativoDesde)}${j.iniciadoPor ? ` · ${esc(nomePerfil(j.iniciadoPor))} começou` : ''}</p>
+          <p class="cronometro" role="timer" aria-label="Tempo juntos neste encontro" data-cronometro>${relogio(tempoAtualMs(j))}</p>
+          <div class="grupo-botoes">
+            <button type="button" class="botao" data-encerrar-juntos>${icone('check')} Encerrar encontro</button>
+            <button type="button" class="botao-fantasma pequeno" data-cancelar-juntos>Foi sem querer</button>
+          </div>
+        </div>
+        ${estatisticas}`;
+    }
+    return `
+      <div class="juntos-parado">
+        <p>Quando estiverem juntinhos, toquem no botão. O cantinho conta o tempo e guarda para vocês dois.</p>
+        <button type="button" class="botao botao-juntos" data-comecar-juntos>${icone('coracao')} Estamos juntos?</button>
+      </div>
+      ${estatisticas}`;
+  }
+
+  function redesenharJuntos(focoSeletor) {
+    const area = el.querySelector('#juntos-corpo');
+    if (!area) return;
+    area.innerHTML = htmlJuntos();
+    el.querySelector('.juntos')?.classList.toggle('ativo', Boolean(juntos.ativoDesde));
+    if (focoSeletor) area.querySelector(focoSeletor)?.focus();
+  }
+
+  const paraInputLocal = (d) => {
+    const z = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}T${z(d.getHours())}:${z(d.getMinutes())}`;
+  };
+
+  function modalEncerrar() {
+    const inicio = new Date(juntos.ativoDesde);
+    const { el: modal, fechar } = abrirModal({
+      titulo: 'Encerrar encontro',
+      corpo: `
+        <form class="formulario" id="form-encerrar" novalidate>
+          <p>Vocês ficaram juntos por <strong data-duracao-previa>${duracaoPorExtenso(tempoAtualMs(juntos))}</strong> (desde ${hora(juntos.ativoDesde)}).</p>
+          <div class="campo">
+            <label for="encontro-nota">Como foi? <span class="dica">(opcional)</span></label>
+            <textarea id="encontro-nota" name="nota" rows="3" maxlength="280" placeholder="Ex.: cinema e pizza"></textarea>
+          </div>
+          <details class="ajuste-fim">
+            <summary>Esqueceram de encerrar na hora?</summary>
+            <div class="campo">
+              <label for="encontro-fim">Horário em que o encontro terminou</label>
+              <input id="encontro-fim" name="fim" type="datetime-local" min="${paraInputLocal(inicio)}" max="${paraInputLocal(new Date())}" value="${paraInputLocal(new Date())}">
+            </div>
+          </details>
+        </form>`,
+      rodape: `<button type="button" class="botao-fantasma" data-fechar>Voltar</button>
+               <button type="submit" form="form-encerrar" class="botao">${icone('salvar')} Guardar encontro</button>`,
+    });
+    const form = modal.querySelector('form');
+    form.elements.nota.focus();
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const d = lerFormulario(form);
+      const ajustado = form.querySelector('details').open && d.fim ? new Date(d.fim) : null;
+      try {
+        juntos = await encerrarJuntos(ctx.perfil, { nota: d.nota, fim: ajustado });
+        fechar();
+        toast(`Encontro de ${duracaoPorExtenso(juntos.encontros[0]?.duracaoMs || 0)} guardado.`, 'sucesso');
+        redesenharJuntos('[data-comecar-juntos]');
+      } catch (err) { toast(err.message, 'erro'); }
+    });
+  }
+
+  function modalHistorico() {
+    const { el: modal } = abrirModal({
+      titulo: 'Nossos encontros',
+      corpo: '<div data-lista-encontros></div>',
+      rodape: '<button type="button" class="botao" data-fechar>Fechar</button>',
+    });
+    const desenharLista = () => {
+      const area = modal.querySelector('[data-lista-encontros]');
+      if (!juntos.encontros.length) { area.innerHTML = '<p class="meta">Nenhum encontro guardado.</p>'; return; }
+      area.innerHTML = `
+        <p class="meta">Total: ${duracaoPorExtenso(juntos.totalMs)} em ${plural(juntos.encontros.length, 'encontro', 'encontros')}.</p>
+        <ul class="lista-encontros" role="list">
+          ${juntos.encontros.map((e) => `
+            <li class="encontro" data-encontro="${esc(e.id)}">
+              <div>
+                <p class="encontro-data">${esc(formatarData(e.inicio, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }))}</p>
+                <p class="meta">${hora(e.inicio)} – ${hora(e.fim)} · <strong>${duracaoPorExtenso(e.duracaoMs)}</strong></p>
+                ${e.nota ? `<p class="encontro-nota">${esc(e.nota)}</p>` : ''}
+              </div>
+              <button type="button" class="botao-icone perigo" data-remover-encontro aria-label="Excluir encontro de ${esc(formatarData(e.inicio))}">${icone('lixeira')}</button>
+            </li>`).join('')}
+        </ul>`;
+    };
+    modal.querySelector('[data-lista-encontros]').addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-remover-encontro]');
+      if (!b) return;
+      e.stopPropagation();
+      const id = b.closest('[data-encontro]').dataset.encontro;
+      const linha = b.closest('[data-encontro]');
+      if (!linha.classList.contains('confirmando')) {
+        linha.classList.add('confirmando');
+        b.insertAdjacentHTML('beforebegin', `<button type="button" class="botao-perigo pequeno" data-confirmar-remocao>Excluir mesmo</button>`);
+        linha.querySelector('[data-confirmar-remocao]').focus();
+        linha.querySelector('[data-confirmar-remocao]').addEventListener('click', async () => {
+          try {
+            juntos = await removerEncontro(id);
+            desenharLista();
+            redesenharJuntos();
+            toast('Encontro excluído.', 'sucesso');
+          } catch (err) { toast(err.message, 'erro'); }
+        });
+      }
+    });
+    desenharLista();
+  }
 
   function htmlFoto() {
     const tema = temaAtual();
@@ -86,7 +220,8 @@ export async function renderizar(el, ctx) {
   function desenhar() {
     const tema = temaAtual();
     const memoriasRecentes = [...dados.memorias].sort((a, b) => String(b.criadoEm || '').localeCompare(String(a.criadoEm || ''))).slice(0, 3);
-    const cartaDestaque = [...dados.cartas].sort((a, b) => String(b.atualizadoEm || '').localeCompare(String(a.atualizadoEm || '')))[0];
+    const novas = dados.cartas.filter((c) => c.para === ctx.perfil.id && c.enviadaEm && !c.lidaEm);
+    const cartaDestaque = novas[0] || [...dados.cartas].sort((a, b) => String(b.enviadaEm || b.atualizadoEm || '').localeCompare(String(a.enviadaEm || a.atualizadoEm || '')))[0];
     const itensPendentes = dados.listas.reduce((s, l) => s + (l.itens || []).filter((i) => !i.feito).length, 0);
     const atalhos = [
       { rota: 'cartinhas', titulo: 'Cartinhas', icone: 'carta', texto: plural(dados.cartas.length, 'cartinha guardada', 'cartinhas guardadas'), enfeite: { neutro: 'laco', lury: 'vela', manu: 'selo' } },
@@ -119,6 +254,19 @@ export async function renderizar(el, ctx) {
             </span>
           </figcaption>
         </figure>
+      </section>
+
+      ${novas.length ? `
+        <a class="aviso-carta-nova cartao" href="#/cartinhas?abrir=${esc(novas[0].id)}">
+          <span class="envelope-mini" aria-hidden="true">${icone('carta')}</span>
+          <span><strong>${novas.length === 1 ? `Chegou uma cartinha de ${esc(nomePerfil(novas[0].de))}!` : `Chegaram ${novas.length} cartinhas novas!`}</strong>
+          <span class="meta">Toque para abrir.</span></span>
+          ${icone('direita')}
+        </a>` : ''}
+
+      <section class="juntos cartao ${juntos.ativoDesde ? 'ativo' : ''}" aria-labelledby="titulo-juntos">
+        <h2 id="titulo-juntos">Estamos juntos?</h2>
+        <div id="juntos-corpo">${htmlJuntos()}</div>
       </section>
 
       <section class="contador cartao" aria-labelledby="titulo-contador">
@@ -162,11 +310,14 @@ export async function renderizar(el, ctx) {
 
         <section class="cartao carta-destaque" aria-labelledby="titulo-carta-destaque">
           <div class="cabecalho-secao compacto">
-            <h2 id="titulo-carta-destaque">Cartinha em destaque</h2>
+            <h2 id="titulo-carta-destaque">${novas.length ? 'Cartinha nova' : 'Cartinha em destaque'}</h2>
             ${cartaDestaque?.exemplo ? seloExemplo() : ''}
           </div>
           ${cartaDestaque ? `
-            <a href="#/cartinhas" class="carta-link" aria-label="Abrir cartinhas: ${esc(cartaDestaque.titulo)}">${htmlCarta(cartaDestaque, { compacta: true })}</a>` : `
+            ${novas.length ? `<a href="#/cartinhas?abrir=${esc(cartaDestaque.id)}" class="envelope-destaque" aria-label="Abrir a cartinha nova de ${esc(nomePerfil(cartaDestaque.de))}">
+                <span class="envelope-fechado" aria-hidden="true"><span class="selo-cera">${icone('coracao')}</span></span>
+                <span class="meta">De ${esc(nomePerfil(cartaDestaque.de))} · toque para abrir</span></a>`
+              : `<a href="#/cartinhas?abrir=${esc(cartaDestaque.id)}" class="carta-link" aria-label="Abrir cartinha: ${esc(cartaDestaque.titulo)}">${htmlCarta(cartaDestaque, { compacta: true })}</a>`}` : `
             <p class="meta">Nenhuma cartinha ainda.</p>
             <a class="botao pequeno" href="#/cartinhas?nova">${icone('carta')} Escrever a primeira</a>`}
         </section>
@@ -219,6 +370,23 @@ export async function renderizar(el, ctx) {
   el.addEventListener('click', async (e) => {
     const b = e.target.closest('button');
     if (!b) return;
+    if (b.hasAttribute('data-comecar-juntos')) {
+      b.disabled = true;
+      try {
+        juntos = await comecarJuntos(ctx.perfil);
+        redesenharJuntos('[data-encerrar-juntos]');
+        toast('Cronômetro ligado. Aproveitem!', 'sucesso');
+      } catch (err) { toast(err.message, 'erro'); b.disabled = false; }
+      return;
+    }
+    if (b.hasAttribute('data-encerrar-juntos')) return modalEncerrar();
+    if (b.hasAttribute('data-historico-juntos')) return modalHistorico();
+    if (b.hasAttribute('data-cancelar-juntos')) {
+      const ok = await confirmar({ titulo: 'Descartar este encontro?', mensagem: 'O cronômetro para e este tempo não é somado ao total.', textoConfirmar: 'Descartar' });
+      if (!ok) return;
+      try { juntos = await cancelarJuntos(); redesenharJuntos('[data-comecar-juntos]'); } catch (err) { toast(err.message, 'erro'); }
+      return;
+    }
     if (b.hasAttribute('data-editar-data')) editarData();
     if (b.hasAttribute('data-remover-foto')) {
       const ok = await confirmar({ titulo: 'Remover foto?', mensagem: 'A foto do casal sai da página inicial e volta a ilustração do tema.', textoConfirmar: 'Remover' });
@@ -248,6 +416,23 @@ export async function renderizar(el, ctx) {
   });
 
   const pararOuvir = aoMudarTema(() => desenhar());
+  // Atualiza o cronômetro a cada segundo e busca mudanças do outro perfil a cada 30 s
+  const tique = setInterval(() => {
+    if (!juntos.ativoDesde) return;
+    const c = el.querySelector('[data-cronometro]');
+    if (c) c.textContent = relogio(tempoAtualMs(juntos));
+    const t = el.querySelector('[data-juntos-total]');
+    if (t) t.textContent = duracaoPorExtenso(juntos.totalMs + tempoAtualMs(juntos));
+  }, 1000);
+  const sincronizar = setInterval(async () => {
+    if (document.querySelector('dialog[open]')) return;
+    try {
+      const novo = await lerJuntos();
+      if (JSON.stringify(novo) !== JSON.stringify(juntos)) { juntos = novo; redesenharJuntos(); }
+    } catch { /* sem conexão: tenta de novo depois */ }
+  }, 30000);
+  const aoMudarJuntos = (e) => { juntos = normalizarJuntos(e.detail); redesenharJuntos(); };
+  window.addEventListener('nc:juntos-mudou', aoMudarJuntos);
   desenhar();
-  return () => pararOuvir();
+  return () => { pararOuvir(); clearInterval(tique); clearInterval(sincronizar); window.removeEventListener('nc:juntos-mudou', aoMudarJuntos); };
 }

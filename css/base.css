@@ -94,7 +94,7 @@ html[data-decoracao="discreta"] .decoracao .enfeite { opacity: calc(var(--o, .5)
 html[data-decoracao="discreta"] .decoracao .enfeite.opcional { display: none; }
 @keyframes flutuar {
   from { translate: 0 0; }
-  to { translate: 0 -10px; }
+  to { translate: 0 -5px; }
 }
 
 /* ---------- Estrutura da aplicação ---------- */
@@ -129,7 +129,7 @@ html[data-decoracao="discreta"] .decoracao .enfeite.opcional { display: none; }
 .menu-link {
   display: flex; align-items: center; gap: .75rem;
   padding: .7rem .85rem; border-radius: var(--raio-pequeno);
-  color: var(--cor-texto); text-decoration: none; font-weight: 700;
+  color: var(--cor-texto); text-decoration: none; font-weight: 500;
   border: 1px solid transparent;
   transition: background-color .2s, color .2s, transform .15s;
 }
@@ -139,7 +139,7 @@ html[data-decoracao="discreta"] .decoracao .enfeite.opcional { display: none; }
   background: var(--menu-ativo-fundo);
   color: var(--menu-ativo-texto);
   border-color: var(--menu-ativo-borda);
-  box-shadow: var(--sombra-suave);
+  font-weight: 600;
 }
 .menu-rodape { margin-top: auto; display: grid; gap: .5rem; font-size: .85rem; color: var(--cor-texto-suave); }
 
@@ -200,7 +200,7 @@ main#conteudo:focus, main#conteudo [tabindex="-1"]:focus { outline: none; }
     padding: .4rem .2rem; border-radius: var(--raio-pequeno);
     background: none; border: 0;
     color: var(--cor-texto-suave); text-decoration: none;
-    font-size: .72rem; font-weight: 700;
+    font-size: .72rem; font-weight: 600;
     min-height: 48px;
   }
   .nav-inferior .icone { width: 22px; height: 22px; }
