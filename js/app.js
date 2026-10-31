@@ -121,18 +121,19 @@ export async function comemorarNovidades() {
 }
 
 /**
- * Na primeira vez que a Manu entra, mostra a animação de início (feita pelo Lury).
- * A marca de "já viu" fica nos ajustes do casal, então vale para todos os aparelhos.
+ * Na primeira vez que a Manu entra em cada aparelho, mostra a animação de início (feita pelo Lury).
+ * A marca de "já viu" fica neste navegador, então um celular ou computador novo mostra de novo.
  */
+const CHAVE_INTRO = 'nc:intro-manu-vista';
 async function escolherAnimacao(perfil) {
   if (perfil.id === 'manu') {
     let jaViu = true;
-    try { jaViu = Boolean((await obterAjustes())?.introManuVista); } catch { jaViu = true; }
+    try { jaViu = localStorage.getItem(CHAVE_INTRO) === '1'; } catch { jaViu = true; }
     if (!jaViu) {
       const { mostrarIntro } = await import('./intro.js');
       try { sessionStorage.setItem('nc:boas-vindas-vista', '1'); } catch { /* ignora */ }
+      try { localStorage.setItem(CHAVE_INTRO, '1'); } catch { /* ignora */ }
       await mostrarIntro();
-      try { await salvarAjustes({ introManuVista: true }); } catch { /* tenta de novo na próxima entrada */ }
       return;
     }
   }
