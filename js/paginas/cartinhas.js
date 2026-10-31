@@ -1,4 +1,5 @@
 // Cartinhas: coleção + editor livre com decoração e pré-visualização.
+// Também recebe os bilhetes rápidos (Enviar elogio e Lembre de mim), ver ../bilhetes.js.
 import { listar, salvar, remover } from '../store/index.js';
 import { icone } from '../ui/icones.js';
 import { adesivo, enfeitePorTema, ADESIVOS, PACOTES } from '../ui/ilustracoes.js';
@@ -8,6 +9,7 @@ import { temaAtual } from '../tema.js';
 import {
   htmlCarta, estiloPadrao, PAPEIS, FONTES, ALINHAMENTOS, MOLDURAS, CORES_PAPEL, CORES_TINTA, MAX_ADESIVOS,
 } from './carta-visual.js';
+import { ehBilhete, htmlBilhete, abrirElogio, abrirLembrete, avisarOutro, TIPOS_BILHETE } from '../bilhetes.js';
 
 /** Quem pode ver a cartinha: quem escreveu e, depois de enviada, quem recebeu. */
 export function cartaVisivelPara(c, perfilId) {
@@ -47,7 +49,37 @@ export async function renderizar(el, ctx) {
   const naoLida = (c) => grupoDa(c, eu) === 'recebidas' && !c.lidaEm;
 
   // ---------------- Coleção ----------------
+  function htmlCartaoBilhete(c) {
+    const grupo = grupoDa(c, eu);
+    const fechada = naoLida(c);
+    const tipo = TIPOS_BILHETE[c.tipo];
+    const titulo = c.tipo === 'elogio' ? (grupo === 'recebidas' ? `Elogio de ${nome(c.de)}` : `Elogio para ${nome(c.para)}`) : (grupo === 'recebidas' ? `${nome(c.de)} lembrou de você` : `Lembre de mim para ${nome(c.para)}`);
+    const meta = grupo === 'recebidas'
+      ? esc(formatarData(c.enviadaEm))
+      : `${esc(formatarData(c.enviadaEm))} · ${c.lidaEm ? `${icone('check')} visto` : 'ainda não visto'}`;
+    return `
+      <li class="cartao-carta cartao-bilhete ${fechada ? 'nao-lida' : ''}">
+        <button type="button" class="carta-miniatura" data-abrir="${esc(c.id)}" aria-label="${fechada ? `Abrir: ${esc(titulo)}` : `Ver: ${esc(titulo)}`}">
+          ${fechada
+            ? `<span class="bilhete-dobrado tipo-${esc(c.tipo)}" aria-hidden="true">${icone(tipo.icone, 'cheio')}<span>${c.tipo === 'elogio' ? 'Elogio novo' : 'Alguém lembrou de você'}</span></span>`
+            : htmlBilhete(c, { compacto: true })}
+        </button>
+        <div class="cartao-carta-info">
+          <div>
+            <h2 class="cartao-carta-titulo">${esc(titulo)} ${fechada ? '<span class="selo selo-nova">Novo</span>' : ''}</h2>
+            <p class="meta">${meta}</p>
+          </div>
+          <div class="grupo-botoes acoes-carta">
+            <button type="button" class="botao-icone" data-abrir="${esc(c.id)}" aria-label="Ver ${esc(titulo)}" title="Ver">${icone('olho')}</button>
+            ${grupo === 'recebidas' ? `<button type="button" class="botao-icone" data-abrir="${esc(c.id)}" aria-label="Responder ${esc(nome(c.de))}" title="Responder">${icone('desfazer')}</button>` : ''}
+            ${grupo === 'enviadas' ? `<button type="button" class="botao-icone perigo" data-excluir="${esc(c.id)}" aria-label="Excluir ${esc(titulo)}" title="Excluir">${icone('lixeira')}</button>` : ''}
+          </div>
+        </div>
+      </li>`;
+  }
+
   function htmlCartao(c) {
+    if (ehBilhete(c)) return htmlCartaoBilhete(c);
     const grupo = grupoDa(c, eu);
     const fechada = naoLida(c);
     let meta = '';
@@ -98,7 +130,11 @@ export async function renderizar(el, ctx) {
           <h1 class="titulo-pagina"><span class="enfeite-titulo" aria-hidden="true">${enfeitePorTema({ neutro: 'laco', lury: 'vela', manu: 'selo' })}</span>Cartinhas</h1>
           <p>Escreva, enfeite e mande cartinhas para ${esc(outro.nome)}.</p>
         </div>
-        <button type="button" class="botao" data-nova>${icone('mais')} Nova cartinha</button>
+        <div class="grupo-botoes acoes-cartinhas">
+          <button type="button" class="botao-sec" data-elogio>${icone('sparkle')} Enviar elogio</button>
+          <button type="button" class="botao-sec" data-lembrete>${icone('coracao')} Lembre de mim</button>
+          <button type="button" class="botao" data-nova>${icone('mais')} Nova cartinha</button>
+        </div>
       </div>
       <div class="abas" role="tablist" aria-label="Cartinhas">
         ${Object.entries(ABAS).map(([id, n]) => `
@@ -119,7 +155,33 @@ export async function renderizar(el, ctx) {
     if (focarAba) el.querySelector(`[data-aba="${aba}"]`)?.focus();
   }
 
+  function mostrarLeituraBilhete(carta, { revelar = false } = {}) {
+    const grupo = grupoDa(carta, eu);
+    const { el: modal, fechar } = abrirModal({
+      titulo: carta.tipo === 'elogio' ? (grupo === 'recebidas' ? `Um elogio de ${nome(carta.de)}` : `Elogio para ${nome(carta.para)}`) : (grupo === 'recebidas' ? `${nome(carta.de)} lembrou de você` : `Lembre de mim para ${nome(carta.para)}`),
+      corpo: `<div class="bilhete-leitura ${revelar ? 'revelar' : ''}">${htmlBilhete(carta)}</div>
+        <p class="meta centro">${grupo === 'recebidas'
+          ? `Recebido em ${esc(formatarData(carta.enviadaEm, { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }))}`
+          : `Enviado em ${esc(formatarData(carta.enviadaEm, { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }))} · ${carta.lidaEm ? 'visto' : 'ainda não visto'}`}</p>`,
+      rodape: grupo === 'recebidas'
+        ? `<button type="button" class="botao-fantasma" data-fechar>Fechar</button>
+           <button type="button" class="botao-sec" data-responder-lembrete>${icone('coracao')} Lembre de mim</button>
+           <button type="button" class="botao" data-responder-elogio>${icone('sparkle')} Elogiar de volta</button>`
+        : '<button type="button" class="botao" data-fechar>Fechar</button>',
+    });
+    modal.querySelector('[data-responder-elogio]')?.addEventListener('click', () => { fechar(); enviarRapido('elogio'); });
+    modal.querySelector('[data-responder-lembrete]')?.addEventListener('click', () => { fechar(); enviarRapido('lembrete'); });
+  }
+
+  async function enviarRapido(tipo) {
+    const salvo = await (tipo === 'elogio' ? abrirElogio(ctx.perfil) : abrirLembrete(ctx.perfil));
+    if (!salvo || !el.isConnected) return;
+    cartas = [salvo, ...cartas.filter((c) => c.id !== salvo.id)];
+    if (modo === 'colecao') mostrarColecao();
+  }
+
   function mostrarLeitura(carta) {
+    if (ehBilhete(carta)) return mostrarLeituraBilhete(carta);
     const grupo = grupoDa(carta, eu);
     const { el: modal, fechar } = abrirModal({
       titulo: carta.titulo,
@@ -153,6 +215,10 @@ export async function renderizar(el, ctx) {
     const carta = cartas.find((c) => c.id === id);
     if (!carta) return;
     if (!naoLida(carta)) return mostrarLeitura(carta);
+    if (ehBilhete(carta)) {
+      marcarComoLida(carta).then((lida) => { if (el.isConnected && modo === 'colecao') mostrarColecao(); return lida; });
+      return mostrarLeituraBilhete(carta, { revelar: true });
+    }
 
     // Cartinha nova: primeiro o envelope fechado
     const { el: modal, fechar } = abrirModal({
@@ -197,6 +263,7 @@ export async function renderizar(el, ctx) {
     try {
       const salvo = await salvar('cartas', { ...carta, de: eu, para: outro.id, enviadaEm: new Date().toISOString(), lidaEm: null, exemplo: false });
       cartas = cartas.map((c) => (c.id === salvo.id ? salvo : c));
+      avisarOutro(salvo);
       toast(`Cartinha enviada para ${outro.nome}!`, 'sucesso');
       aba = 'enviadas';
       avisarMudanca();
@@ -465,6 +532,7 @@ export async function renderizar(el, ctx) {
         const salvo = await salvar('cartas', doc);
         const i = cartas.findIndex((c) => c.id === salvo.id);
         if (i >= 0) cartas[i] = salvo; else cartas.unshift(salvo);
+        if (enviar) avisarOutro(salvo);
         toast(enviar ? `Cartinha enviada para ${outro.nome}!` : (original ? 'Cartinha atualizada!' : 'Rascunho guardado.'), 'sucesso');
         if (location.hash.includes('?')) history.replaceState(null, '', '#/cartinhas');
         aba = grupoDa(salvo, eu);
@@ -488,6 +556,8 @@ export async function renderizar(el, ctx) {
     const b = e.target.closest('button');
     if (!b) return;
     if (b.hasAttribute('data-nova')) mostrarEditor();
+    else if (b.hasAttribute('data-elogio')) enviarRapido('elogio');
+    else if (b.hasAttribute('data-lembrete')) enviarRapido('lembrete');
     else if (b.dataset.aba) { aba = b.dataset.aba; mostrarColecao({ focarAba: true }); }
     else if (b.dataset.abrir) abrirCarta(b.dataset.abrir);
     else if (b.dataset.responder) mostrarEditor(null, { respostaA: cartas.find((c) => c.id === b.dataset.responder) });
@@ -513,7 +583,11 @@ export async function renderizar(el, ctx) {
   if (!temNova && !cartas.some((c) => grupoDa(c, eu) === 'recebidas')) {
     aba = cartas.some((c) => grupoDa(c, eu) === 'rascunhos') && !cartas.some((c) => grupoDa(c, eu) === 'enviadas') ? 'rascunhos' : (cartas.some((c) => grupoDa(c, eu) === 'enviadas') ? 'enviadas' : 'recebidas');
   }
-  if (parametros.has('nova')) {
+  if (parametros.has('elogio') || parametros.has('lembrete')) {
+    history.replaceState(null, '', '#/cartinhas');
+    mostrarColecao();
+    enviarRapido(parametros.has('elogio') ? 'elogio' : 'lembrete');
+  } else if (parametros.has('nova')) {
     mostrarEditor();
   } else if (parametros.get('abrir')) {
     const alvo = cartas.find((c) => c.id === parametros.get('abrir'));
@@ -524,4 +598,15 @@ export async function renderizar(el, ctx) {
   } else {
     mostrarColecao();
   }
+
+  // Chegou algo do outro perfil enquanto esta página está aberta: atualiza a coleção
+  const aoReceber = async () => {
+    if (modo !== 'colecao') return;
+    try {
+      cartas = (await listar('cartas')).filter((c) => cartaVisivelPara(c, eu));
+      if (modo === 'colecao' && el.isConnected && !document.querySelector('dialog[open]')) mostrarColecao();
+    } catch { /* tenta de novo no próximo aviso */ }
+  };
+  window.addEventListener('nc:carta-recebida', aoReceber);
+  return () => window.removeEventListener('nc:carta-recebida', aoReceber);
 }

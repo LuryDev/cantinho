@@ -67,6 +67,7 @@ async function abrirApp(perfil, { primeiraEntrada, animar }) {
   // Sala do cinema (sessão juntos): um canal só para o site todo
   const sala = iniciarSala(perfil, { modo: modoAuth(), cliente: clienteSupabase() });
   sala.ouvir((msg) => {
+    if (msg.tipo === 'aviso') { receberAviso(msg); return; }
     if (msg.tipo !== 'carregar' || rotaDoHash().id === 'cinema') return;
     toast(`${PERFIS[msg.de]?.nome || 'Alguém'} colocou "${msg.titulo || 'um vídeo'}" no cinema.`, 'info', {
       acao: { texto: 'Assistir junto', executar: () => { location.hash = '#/cinema'; } },
@@ -91,12 +92,24 @@ async function abrirApp(perfil, { primeiraEntrada, animar }) {
   }
   const novas = await avisos;
   if (novas > 0 && primeiraEntrada !== null) {
-    toast(novas === 1 ? 'Você tem 1 cartinha nova!' : `Você tem ${novas} cartinhas novas!`, 'info', {
+    toast(novas === 1 ? 'Chegou novidade nas Cartinhas!' : `Você tem ${novas} novidades nas Cartinhas!`, 'info', {
       acao: { texto: 'Abrir', executar: () => { location.hash = '#/cartinhas'; } },
     });
   }
   await recompensas;
   comemorarNovidades();
+}
+
+/** Cartinha, elogio ou lembrete que o outro perfil acabou de enviar (site aberto). */
+async function receberAviso(msg) {
+  if (!perfilAtual || msg.para !== perfilAtual.id) return;
+  const { descricaoNova } = await import('./bilhetes.js');
+  window.dispatchEvent(new CustomEvent('nc:carta-recebida', { detail: msg }));
+  atualizarAvisos();
+  toast(descricaoNova({ de: msg.de, tipo: msg.tipoCarta === 'carta' ? undefined : msg.tipoCarta, mensagem: msg.texto, emoji: msg.emoji }), 'info', {
+    acao: { texto: 'Ver', executar: () => { location.hash = `#/cartinhas?abrir=${encodeURIComponent(msg.id)}`; } },
+    duracao: 10000,
+  });
 }
 
 /**

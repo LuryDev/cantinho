@@ -55,6 +55,7 @@ export async function renderizar(el, ctx) {
   const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
   let juntos = normalizarJuntos(ajustes.juntos);
   const nomePerfil = (id) => PERFIS[id]?.nome || '';
+  const textoNova = (c) => (c.tipo === 'elogio' ? `Chegou um elogio de ${nomePerfil(c.de)}!` : c.tipo === 'lembrete' ? `${nomePerfil(c.de)} lembrou de você!` : `Chegou uma cartinha de ${nomePerfil(c.de)}!`);
   const hora = (iso) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
   /** Curiosidade do encontro atual (ao vivo) ou do último encontro. */
@@ -237,7 +238,8 @@ export async function renderizar(el, ctx) {
     const tema = temaAtual();
     const memoriasRecentes = [...dados.memorias].sort((a, b) => String(b.criadoEm || '').localeCompare(String(a.criadoEm || ''))).slice(0, 3);
     const novas = dados.cartas.filter((c) => c.para === ctx.perfil.id && c.enviadaEm && !c.lidaEm);
-    const cartaDestaque = novas[0] || [...dados.cartas].sort((a, b) => String(b.enviadaEm || b.atualizadoEm || '').localeCompare(String(a.enviadaEm || a.atualizadoEm || '')))[0];
+    const novasCartas = novas.filter((c) => !c.tipo);
+    const cartaDestaque = novasCartas[0] || [...dados.cartas].filter((c) => !c.tipo).sort((a, b) => String(b.enviadaEm || b.atualizadoEm || '').localeCompare(String(a.enviadaEm || a.atualizadoEm || '')))[0];
     const itensPendentes = dados.listas.reduce((s, l) => s + (l.itens || []).filter((i) => !i.feito).length, 0);
     const atalhos = [
       { rota: 'cartinhas', titulo: 'Cartinhas', icone: 'carta', texto: plural(dados.cartas.length, 'cartinha guardada', 'cartinhas guardadas'), enfeite: { neutro: 'laco', lury: 'vela', manu: 'selo' } },
@@ -275,7 +277,7 @@ export async function renderizar(el, ctx) {
       ${novas.length ? `
         <a class="aviso-carta-nova cartao" href="#/cartinhas?abrir=${esc(novas[0].id)}">
           <span class="envelope-mini" aria-hidden="true">${icone('carta')}</span>
-          <span><strong>${novas.length === 1 ? `Chegou uma cartinha de ${esc(nomePerfil(novas[0].de))}!` : `Chegaram ${novas.length} cartinhas novas!`}</strong>
+          <span><strong>${novas.length === 1 ? esc(textoNova(novas[0])) : `Chegaram ${novas.length} cartinhas e bilhetes novos!`}</strong>
           <span class="meta">Toque para abrir.</span></span>
           ${icone('direita')}
         </a>` : ''}
@@ -326,11 +328,11 @@ export async function renderizar(el, ctx) {
 
         <section class="cartao carta-destaque" aria-labelledby="titulo-carta-destaque">
           <div class="cabecalho-secao compacto">
-            <h2 id="titulo-carta-destaque">${novas.length ? 'Cartinha nova' : 'Cartinha em destaque'}</h2>
+            <h2 id="titulo-carta-destaque">${novasCartas.length ? 'Cartinha nova' : 'Cartinha em destaque'}</h2>
             ${cartaDestaque?.exemplo ? seloExemplo() : ''}
           </div>
           ${cartaDestaque ? `
-            ${novas.length ? `<a href="#/cartinhas?abrir=${esc(cartaDestaque.id)}" class="envelope-destaque" aria-label="Abrir a cartinha nova de ${esc(nomePerfil(cartaDestaque.de))}">
+            ${novasCartas.length ? `<a href="#/cartinhas?abrir=${esc(cartaDestaque.id)}" class="envelope-destaque" aria-label="Abrir a cartinha nova de ${esc(nomePerfil(cartaDestaque.de))}">
                 <span class="envelope-fechado" aria-hidden="true"><span class="selo-cera">${icone('coracao')}</span></span>
                 <span class="meta">De ${esc(nomePerfil(cartaDestaque.de))} · toque para abrir</span></a>`
               : `<a href="#/cartinhas?abrir=${esc(cartaDestaque.id)}" class="carta-link" aria-label="Abrir cartinha: ${esc(cartaDestaque.titulo)}">${htmlCarta(cartaDestaque, { compacta: true })}</a>`}` : `

@@ -601,3 +601,53 @@ html[data-movimento="reduzir"] .reacao-voando { animation: none; bottom: 40%; op
 .botao-icone[aria-pressed="true"] { color: #d6a21a; }
 .video-info .meta { margin-bottom: .2rem; }
 @media (max-width: 520px) { .tela-vazia .dica { display: none; } .tela-vazia p { font-size: .9rem; } }
+
+/* ---------- Bilhetes rápidos: Enviar elogio e Lembre de mim ---------- */
+.acoes-cartinhas { flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 640px) { .acoes-cartinhas { justify-content: flex-start; } .acoes-cartinhas .botao, .acoes-cartinhas .botao-sec { flex: 1 1 auto; } }
+
+.bilhete { position: relative; margin: 0 auto; width: min(340px, 100%); padding: 1.6rem 1.4rem 1.3rem; border-radius: 6px; color: #3b2a2f; text-align: center; box-shadow: 0 10px 24px rgba(60, 30, 40, .16); }
+.bilhete-elogio { background: var(--bilhete, #fff1a8); transform: rotate(-1.2deg); }
+.bilhete-fita { position: absolute; top: -10px; left: 50%; width: 90px; height: 22px; transform: translateX(-50%) rotate(2deg); background: rgba(255, 255, 255, .6); box-shadow: 0 1px 2px rgba(0, 0, 0, .08); }
+.bilhete-rotulo { display: inline-flex; align-items: center; gap: .35rem; margin: 0 0 .5rem; font-size: .8rem; font-weight: 700; letter-spacing: .04em; color: #7a5560; }
+.bilhete-rotulo .icone { width: 16px; height: 16px; }
+.bilhete-texto { margin: 0; font-family: "Caveat", var(--fonte-mao), cursive; font-size: 1.75rem; line-height: 1.2; overflow-wrap: anywhere; }
+.bilhete-lembrete { background: #fffaf5; border: 2px dashed #e3b6c2; }
+.bilhete-emoji { display: block; font-size: 3rem; line-height: 1; margin-bottom: .4rem; }
+.bilhete-assinatura { margin: .5rem 0 0; font-size: .9rem; font-weight: 600; color: #7a5560; }
+.bilhete.compacto { width: 100%; min-height: 150px; display: flex; flex-direction: column; justify-content: center; padding: 1.2rem 1rem 1rem; box-shadow: var(--sombra); }
+.bilhete.compacto .bilhete-texto { font-size: 1.45rem; }
+.bilhete.compacto .bilhete-emoji { font-size: 2.3rem; }
+html[data-tema="lury"] .bilhete-lembrete { background: #2a1726; border-color: #7a3a5c; color: #f4e3ec; }
+html[data-tema="lury"] .bilhete-lembrete .bilhete-assinatura { color: #e7a9c4; }
+
+.bilhete-dobrado {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .55rem; width: 100%; min-height: 150px;
+  border-radius: 10px; font-weight: 700; color: #7a3a52; text-align: center; padding: 1rem;
+  background: linear-gradient(135deg, #ffe3ea 0 50%, #ffd2de 50% 100%); box-shadow: var(--sombra);
+}
+.bilhete-dobrado.tipo-elogio { background: linear-gradient(135deg, #fff4bf 0 50%, #ffeb94 50% 100%); color: #6b4a07; }
+.bilhete-dobrado .icone { width: 34px; height: 34px; }
+.cartao-bilhete.nao-lida .bilhete-dobrado { animation: bilhete-balanco 2.4s ease-in-out infinite; }
+@keyframes bilhete-balanco { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(-2deg); } }
+.bilhete-leitura { padding: .8rem 0 .4rem; }
+.bilhete-leitura.revelar .bilhete { animation: bilhete-revelar .55s cubic-bezier(.2, .9, .3, 1.3); }
+@keyframes bilhete-revelar { from { opacity: 0; transform: scale(.6) rotate(-8deg); } to { opacity: 1; } }
+html[data-movimento="reduzir"] .bilhete-dobrado, html[data-movimento="reduzir"] .bilhete-leitura .bilhete { animation: none; }
+
+.form-bilhete { display: grid; gap: 1rem; }
+.form-bilhete fieldset { border: 0; margin: 0; padding: 0; }
+.form-bilhete legend { font-weight: 700; margin-bottom: .5rem; padding: 0; }
+.previa-bilhete { padding: .6rem 0 .3rem; }
+.sugestoes { display: flex; flex-wrap: wrap; gap: .4rem; }
+.chip-sugestao { min-height: 36px; padding: .3rem .75rem; border-radius: 999px; border: 1px solid var(--cor-borda); background: var(--cor-superficie-2); color: var(--cor-texto); font: inherit; font-size: .85rem; cursor: pointer; text-align: left; }
+.chip-sugestao:hover { border-color: var(--cor-primaria); }
+.grade-emojis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .4rem; }
+.opcao-emoji, .opcao-frase { position: relative; }
+.opcao-emoji input, .opcao-frase input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.opcao-emoji > span[aria-hidden] { display: grid; place-items: center; height: 48px; border-radius: var(--raio-pequeno); border: 2px solid var(--cor-borda); background: var(--cor-superficie); font-size: 1.6rem; cursor: pointer; }
+.opcao-emoji input:checked + span { border-color: var(--cor-primaria); background: var(--cor-primaria-suave); }
+.lista-frases { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); gap: .4rem; max-height: 260px; overflow-y: auto; padding: 2px; }
+.opcao-frase > span { display: flex; align-items: center; min-height: 44px; height: 100%; box-sizing: border-box; padding: .45rem .75rem; border-radius: var(--raio-pequeno); border: 1.5px solid var(--cor-borda); background: var(--cor-superficie); cursor: pointer; font-size: .92rem; }
+.opcao-frase input:checked + span { border-color: var(--cor-primaria); background: var(--cor-primaria-suave); font-weight: 600; }
+.opcao-emoji input:focus-visible + span, .opcao-frase input:focus-visible + span { outline: 3px solid var(--cor-foco); outline-offset: 2px; }
