@@ -3,6 +3,8 @@
 //  - Reações (risada, tristeza, pipoca, susto) que flutuam na tela dos dois
 //  - Todo vídeo assistido fica salvo em "Sessões"; os preferidos ganham estrela em "Favoritos"
 //  - Chat do casal ao lado do vídeo (../chat-cinema.js)
+//  - "Sessões do dia": fila de vídeos; no fim de cada vídeo passam os créditos (5 s)
+//    e o próximo da fila começa, com a cortina abrindo
 //  - O tempo com vídeo tocando vira Recompensas do Cinema (aba "Conquistas")
 // Respeita as regras de incorporação do YouTube: nada de download nem remoção de anúncios/controles.
 import { listar, salvar, remover, obterAjustes, salvarAjustes } from '../store/index.js';
@@ -16,6 +18,7 @@ import { somarTempoCinema, gravarTempoCinema, lerProgresso, carregarRecompensas 
 import { montarPainelConquistas } from '../conquistas.js';
 import { montarChat, MAX_MENSAGEM } from '../chat-cinema.js';
 import { notificarOutro } from '../notificacoes.js';
+import { lerFila, adicionarNaFila, removerDaFila, moverNaFila, infoDoYoutube, MAX_FILA } from '../fila-cinema.js';
 
 export const REACOES = {
   risada: { emoji: '😂', nome: 'Risada' },
@@ -98,7 +101,11 @@ export async function renderizar(el, ctx) {
   let player = null;
   let playerPronto = null;
   let usandoApi = true;
-  let videoAtual = null; // { youtubeId, titulo, docId }
+  let videoAtual = null; // { youtubeId, titulo, docId, escolhidoPor, canal }
+  let fila = [];
+  let timerCreditos = null;
+  let timerCortina = null;
+  let cortinaFechadaEm = 0;
   let aplicandoRemotoAte = 0;
   let estadoEsperado = null; // estado que o comando remoto vai provocar (o "eco" a ignorar)
   let ultimoRemoto = null;
@@ -143,6 +150,7 @@ export async function renderizar(el, ctx) {
               <div id="player-youtube" hidden></div>
               <div class="reacoes-voando" aria-hidden="true"></div>
               <div class="chat-flutuante" aria-hidden="true"></div>
+              <div class="creditos" id="creditos" role="status" hidden></div>
               <div class="tela-entrar" id="tela-entrar" hidden></div>
               <div class="tela-aviso" id="tela-aviso" role="alert" hidden></div>
             </div>
@@ -173,8 +181,9 @@ export async function renderizar(el, ctx) {
           <div class="entrada-com-botao">
             <input class="entrada" id="url-video" name="url" placeholder="https://www.youtube.com/watch?v=…" autocomplete="off" inputmode="url">
             <button type="submit" class="botao">${icone('play')} Carregar</button>
+            <button type="button" class="botao-sec" data-por-na-fila>${icone('mais')} Pôr na fila</button>
           </div>
-          <p class="dica">Aceita links do tipo youtube.com/watch, youtu.be, /shorts e /embed. Todo vídeo carregado fica salvo em "Sessões".</p>
+          <p class="dica">Aceita links do tipo youtube.com/watch, youtu.be, /shorts e /embed. Todo vídeo carregado fica salvo em "Sessões". "Pôr na fila" guarda o vídeo nas Sessões do dia, para tocar depois.</p>
         </div>
       </form>
       <div class="grupo-botoes">
@@ -191,6 +200,17 @@ export async function renderizar(el, ctx) {
     </section>
     <aside class="cartao chat-cinema" id="chat-cinema"></aside>
     </div>
+
+    <section class="cartao fila-cinema" aria-labelledby="titulo-fila">
+      <div class="fila-topo">
+        <div>
+          <h2 id="titulo-fila" class="subtitulo">${icone('lista')} Sessões do dia</h2>
+          <p class="dica">A fila de hoje, para os dois. No fim de cada vídeo passam os créditos e o próximo começa sozinho.</p>
+        </div>
+        <button type="button" class="botao" data-comecar-fila hidden>${icone('play')} Começar a sessão</button>
+      </div>
+      <div data-fila aria-live="polite"></div>
+    </section>
 
     <section class="secao-videos" aria-labelledby="titulo-videos">
       <h2 id="titulo-videos" class="sr-only">Vídeos e conquistas</h2>
@@ -214,6 +234,9 @@ export async function renderizar(el, ctx) {
   const botaoTelaCheia = el.querySelector('[data-tela-cheia]');
   const form = el.querySelector('#form-video');
   const statusSala = el.querySelector('#sala-status');
+  const creditos = el.querySelector('#creditos');
+  const filaEl = el.querySelector('[data-fila]');
+  const botaoComecar = el.querySelector('[data-comecar-fila]');
 
   const pararOuvirTema = aoMudarTema((t) => {
     el.querySelector('.letreiro-texto').textContent = letreiro(t);
@@ -254,6 +277,7 @@ export async function renderizar(el, ctx) {
   }
 
   function mostrarEntrar(texto) {
+    abrirCortina();
     entrar.hidden = false;
     entrar.innerHTML = `<button type="button" class="botao botao-entrar-sessao" data-entrar-sessao>${icone('play')} ${esc(texto)}</button>`;
   }
@@ -277,8 +301,10 @@ export async function renderizar(el, ctx) {
     if (videoAtual && dados?.video_id === videoAtual.youtubeId) {
       aviso.hidden = true;
       if (dados.title) atualizarTituloAutomatico(dados.title);
+      if (dados.author) videoAtual.canal = dados.author;
     }
-    if (ev.data === 1) { entrar.hidden = true; jaInteragiu = true; }
+    if (ev.data === 1) { entrar.hidden = true; jaInteragiu = true; abrirCortina(); esconderCreditos(); }
+    if (ev.data === 0) mostrarCreditos();
     marcarTocando(ev.data === 1);
     if (ev.data === 2 || ev.data === 0) salvarTempoEConferir();
     if (ev.data !== 1 && ev.data !== 2 && ev.data !== 0) return;
@@ -293,8 +319,17 @@ export async function renderizar(el, ctx) {
   }
 
   /** Mostra um vídeo na tela. tocar=true tenta reproduzir (pode exigir um toque, regra dos navegadores). */
-  async function mostrarVideo(id, titulo, { inicio = 0, tocar = false } = {}) {
-    videoAtual = { youtubeId: id, titulo: titulo || videoAtual?.titulo || '', docId: videos.find((v) => v.youtubeId === id)?.id };
+  async function mostrarVideo(id, titulo, { inicio = 0, tocar = false, escolhidoPor = null } = {}) {
+    const novo = videoAtual?.youtubeId !== id;
+    videoAtual = {
+      youtubeId: id,
+      titulo: titulo || (novo ? '' : videoAtual?.titulo) || '',
+      docId: videos.find((v) => v.youtubeId === id)?.id,
+      escolhidoPor: escolhidoPor || (novo ? null : videoAtual?.escolhidoPor) || eu,
+      canal: novo ? '' : (videoAtual?.canal || ''),
+    };
+    esconderCreditos();
+    if (novo) fecharCortina();
     aviso.hidden = true;
     entrar.hidden = true;
     vazia.hidden = true;
@@ -302,7 +337,7 @@ export async function renderizar(el, ctx) {
     palco.classList.add('em-sessao');
     atualizarBotoes();
 
-    if (!usandoApi) { usarIframeSimples(id, inicio); return; }
+    if (!usandoApi) { usarIframeSimples(id, inicio); setTimeout(abrirCortina, 1200); return; }
     try {
       const YT = await carregarApiYoutube();
       if (!el.isConnected) return;
@@ -345,7 +380,7 @@ export async function renderizar(el, ctx) {
 
   function enviarEstado(tocando) {
     if (!videoAtual || !usandoApi) return;
-    const dados = { youtubeId: videoAtual.youtubeId, titulo: videoAtual.titulo, tocando, posicao: tempoAtual() };
+    const dados = { youtubeId: videoAtual.youtubeId, titulo: videoAtual.titulo, escolhidoPor: videoAtual.escolhidoPor, tocando, posicao: tempoAtual() };
     // não devolve o eco do que acabou de chegar do outro perfil
     if (ultimoRemoto && Date.now() - ultimoRemoto.recebidoEm < 2500 && ultimoRemoto.tocando === tocando
       && Math.abs(ultimoRemoto.posicaoEstimada() - dados.posicao) < 1.5) return;
@@ -365,7 +400,7 @@ export async function renderizar(el, ctx) {
     if (!videoAtual || videoAtual.youtubeId !== msg.youtubeId) {
       if (!carregarSeNovo) return;
       marcarRemoto(msg.tocando && jaInteragiu);
-      await mostrarVideo(msg.youtubeId, msg.titulo, { inicio: alvoDe(msg), tocar: msg.tocando && jaInteragiu });
+      await mostrarVideo(msg.youtubeId, msg.titulo, { inicio: alvoDe(msg), tocar: msg.tocando && jaInteragiu, escolhidoPor: msg.escolhidoPor || msg.de });
       if (msg.tocando && !jaInteragiu) mostrarEntrar(`Assistir junto com ${nome(msg.de)}`);
       else if (msg.tocando) conferirAutoplay(msg.de);
       setTimeout(recarregarVideos, 1500);
@@ -396,7 +431,7 @@ export async function renderizar(el, ctx) {
       aplicarRemoto(msg);
     } else if (msg.tipo === 'pedir-estado') {
       if (videoAtual && usandoApi) {
-        sala.enviar('estado', { youtubeId: videoAtual.youtubeId, titulo: videoAtual.titulo, tocando: tocandoAgora(), posicao: tempoAtual() });
+        sala.enviar('estado', { youtubeId: videoAtual.youtubeId, titulo: videoAtual.titulo, escolhidoPor: videoAtual.escolhidoPor, tocando: tocandoAgora(), posicao: tempoAtual() });
       }
     } else if (msg.tipo === 'reacao' && REACOES[msg.reacao]) {
       if (!videoAtual || msg.youtubeId === videoAtual.youtubeId) soltarReacao(msg.reacao, msg.de);
@@ -435,13 +470,13 @@ export async function renderizar(el, ctx) {
     try { const salvo = await salvar('videos', doc); videos = videos.map((v) => (v.id === salvo.id ? salvo : v)); desenharVideos(); } catch { /* ignora */ }
   }
 
-  async function carregarLocal(id, titulo = '', inicio = 0) {
+  async function carregarLocal(id, titulo = '', inicio = 0, { escolhidoPor = eu } = {}) {
     jaInteragiu = true;
     const salvo = videos.find((v) => v.youtubeId === id);
     const t = titulo || salvo?.titulo || '';
-    await mostrarVideo(id, t, { inicio, tocar: true });
-    if (podeSincronizar()) sala.enviar('carregar', { youtubeId: id, titulo: t, tocando: true, posicao: inicio });
-    if (juntosLigado) persistirSala({ youtubeId: id, titulo: t, tocando: true, posicao: inicio });
+    await mostrarVideo(id, t, { inicio, tocar: true, escolhidoPor });
+    if (podeSincronizar()) sala.enviar('carregar', { youtubeId: id, titulo: t, escolhidoPor, tocando: true, posicao: inicio });
+    if (juntosLigado) persistirSala({ youtubeId: id, titulo: t, escolhidoPor, tocando: true, posicao: inicio });
     registrarSessao(id, t);
     tela.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
@@ -469,6 +504,7 @@ export async function renderizar(el, ctx) {
           ${contadorReacoes(v)}
           <div class="grupo-botoes">
             <button type="button" class="botao pequeno" data-assistir>${icone('play')} Assistir</button>
+            <button type="button" class="botao-icone" data-fila-video aria-label="Pôr ${esc(v.titulo)} na fila do dia" title="Pôr na fila do dia">${icone('mais')}</button>
             <button type="button" class="botao-icone" data-favoritar aria-pressed="${fav}" aria-label="${fav ? 'Tirar dos favoritos' : 'Favoritar'}: ${esc(v.titulo)}" title="${fav ? 'Tirar dos favoritos' : 'Favoritar'}">${icone('estrela', fav ? 'cheio' : '')}</button>
             <button type="button" class="botao-icone" data-renomear aria-label="Editar título de ${esc(v.titulo)}" title="Editar título">${icone('editar')}</button>
             <button type="button" class="botao-icone perigo" data-remover aria-label="Remover ${esc(v.titulo)}" title="Remover">${icone('lixeira')}</button>
@@ -589,6 +625,7 @@ export async function renderizar(el, ctx) {
   }, 1000);
 
   function marcarTocando(tocando) {
+    botaoComecar.hidden = !fila.length || tocando;
     if (tocando) document.body.dataset.cinemaTocando = 'sim';
     else delete document.body.dataset.cinemaTocando;
   }
@@ -617,6 +654,147 @@ export async function renderizar(el, ctx) {
   carregarRecompensas().catch(() => {});
   const gravarAoSair = () => { gravarTempoCinema(); };
   window.addEventListener('pagehide', gravarAoSair);
+
+  // ---------------- Cortina ----------------
+  // Fecha quando entra um vídeo novo e abre quando ele começa (pausar/voltar não repete).
+  const reduzirMovimento = () => document.documentElement.dataset.movimento === 'reduzir';
+  function fecharCortina() {
+    if (reduzirMovimento()) return;
+    palco.classList.add('cortina-fechada');
+    cortinaFechadaEm = Date.now();
+    clearTimeout(timerCortina);
+    timerCortina = setTimeout(abrirCortina, 4000); // se o vídeo demorar, abre mesmo assim
+  }
+  function abrirCortina() {
+    if (!palco.classList.contains('cortina-fechada')) return;
+    clearTimeout(timerCortina);
+    const espera = Math.max(0, 700 - (Date.now() - cortinaFechadaEm)); // deixa a cortina terminar de fechar
+    timerCortina = setTimeout(() => palco.classList.remove('cortina-fechada'), espera);
+  }
+
+  // ---------------- Créditos e próximo da fila ----------------
+  function esconderCreditos() {
+    clearTimeout(timerCreditos);
+    creditos.hidden = true;
+    creditos.classList.remove('saindo');
+  }
+
+  function mostrarCreditos() {
+    if (!videoAtual || !creditos.hidden) return;
+    let dados = {};
+    try { dados = player?.getVideoData?.() || {}; } catch { /* sem dados */ }
+    const titulo = dados.title || videoAtual.titulo || 'Vídeo do YouTube';
+    const canal = dados.author || videoAtual.canal || '';
+    const quem = nome(videoAtual.escolhidoPor) || nome(eu);
+    const proximo = fila[0];
+    creditos.innerHTML = `
+      <div class="creditos-conteudo">
+        <p class="creditos-fim">Fim</p>
+        <p class="creditos-titulo">${esc(titulo)}${canal ? ` <span class="creditos-por">por</span> ${esc(canal)}` : ''}</p>
+        <p class="creditos-escolha">vídeo escolhido por: <strong>${esc(quem)}</strong></p>
+        ${proximo ? `<p class="creditos-proximo">A seguir: ${esc(proximo.titulo || 'próximo vídeo da fila')}</p>` : ''}
+      </div>`;
+    creditos.classList.remove('saindo');
+    creditos.hidden = false;
+    const idFim = videoAtual.youtubeId;
+    clearTimeout(timerCreditos);
+    timerCreditos = setTimeout(() => {
+      creditos.classList.add('saindo'); // fade out
+      timerCreditos = setTimeout(() => {
+        esconderCreditos();
+        if (videoAtual?.youtubeId === idFim) avancarFila(idFim);
+      }, 700);
+    }, 5000);
+  }
+
+  /** Assistindo juntos, só um dos dois puxa o próximo (o outro recebe pela sala). */
+  const souLider = () => !(podeSincronizar() && sala.presentes.has(outro.id)) || [eu, outro.id].sort()[0] === eu;
+
+  async function avancarFila(idFim) {
+    await carregarFila();
+    const proximo = fila[0];
+    if (!proximo) return;
+    if (souLider()) { tocarDaFila(proximo); return; }
+    // se quem puxa não fizer isso em alguns segundos, puxo eu
+    setTimeout(() => { if (videoAtual?.youtubeId === idFim && fila[0]?.id === proximo.id) tocarDaFila(proximo); }, 4000);
+  }
+
+  // ---------------- Sessões do dia (fila) ----------------
+  async function carregarFila() {
+    try { fila = await lerFila(); } catch { /* mantém a última */ }
+    desenharFila();
+  }
+
+  function desenharFila() {
+    botaoComecar.hidden = !fila.length || Boolean(videoAtual && tocandoAgora());
+    if (!fila.length) {
+      filaEl.innerHTML = `<p class="fila-vazia">Nenhum vídeo na fila de hoje. Cole um link acima e toque em <strong>Pôr na fila</strong>, ou use o <strong>+</strong> de um vídeo das Sessões.</p>`;
+      return;
+    }
+    filaEl.innerHTML = `<ol class="lista-fila">${fila.map((i, n) => `
+      <li class="item-fila" data-item-fila="${esc(i.id)}">
+        <span class="fila-numero" aria-hidden="true">${n + 1}</span>
+        <img class="fila-miniatura" src="${miniatura(i.youtubeId)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-mini>
+        <div class="fila-info">
+          <p class="fila-titulo">${esc(i.titulo || 'Vídeo do YouTube')}</p>
+          <p class="meta">${i.canal ? `${esc(i.canal)} · ` : ''}escolhido por ${esc(nome(i.por))}</p>
+        </div>
+        <div class="grupo-botoes fila-acoes">
+          <button type="button" class="botao-icone" data-fila-tocar="${esc(i.id)}" aria-label="Tocar agora: ${esc(i.titulo || 'vídeo')}" title="Tocar agora">${icone('play')}</button>
+          <button type="button" class="botao-icone" data-fila-mover="-1" data-id="${esc(i.id)}" aria-label="Subir na fila" title="Subir" ${n === 0 ? 'disabled' : ''}><span class="seta-cima">${icone('direita')}</span></button>
+          <button type="button" class="botao-icone" data-fila-mover="1" data-id="${esc(i.id)}" aria-label="Descer na fila" title="Descer" ${n === fila.length - 1 ? 'disabled' : ''}><span class="seta-baixo">${icone('direita')}</span></button>
+          <button type="button" class="botao-icone perigo" data-fila-remover="${esc(i.id)}" aria-label="Tirar da fila: ${esc(i.titulo || 'vídeo')}" title="Tirar da fila">${icone('fechar')}</button>
+        </div>
+      </li>`).join('')}</ol>
+      <p class="dica">${fila.length} de ${MAX_FILA} na fila de hoje. A fila recomeça vazia amanhã.</p>`;
+  }
+
+  async function tocarDaFila(item) {
+    try { await removerDaFila(item.id); } catch { /* toca mesmo assim */ }
+    fila = fila.filter((x) => x.id !== item.id);
+    desenharFila();
+    carregarLocal(item.youtubeId, item.titulo, 0, { escolhidoPor: item.por });
+  }
+
+  async function porNaFila(id, titulo = '') {
+    try {
+      const salvo = videos.find((v) => v.youtubeId === id);
+      let info = { titulo: titulo || salvo?.titulo || '', canal: '' };
+      if (!info.titulo || !info.canal) {
+        const extra = await infoDoYoutube(id);
+        info = { titulo: info.titulo || extra.titulo || '', canal: extra.canal || '' };
+      }
+      fila = await adicionarNaFila({ youtubeId: id, titulo: info.titulo, canal: info.canal, por: eu });
+      desenharFila();
+      toast(`Na fila de hoje (${fila.length}º).`, 'sucesso', { duracao: 2200 });
+    } catch (e) { toast(e.message, 'erro'); }
+  }
+
+  el.querySelector('[data-por-na-fila]').addEventListener('click', () => {
+    limparErros(form);
+    const id = extrairIdYoutube(form.elements.url.value);
+    if (!id) return marcarErro(form.elements.url, 'Cole o link de um vídeo do YouTube para pôr na fila.');
+    form.elements.url.value = '';
+    porNaFila(id);
+  });
+
+  el.querySelector('.fila-cinema').addEventListener('click', async (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.hasAttribute('data-comecar-fila')) { if (fila[0]) tocarDaFila(fila[0]); return; }
+    const item = fila.find((x) => x.id === (b.dataset.filaTocar || b.dataset.filaRemover || b.dataset.id));
+    if (!item) return;
+    try {
+      if (b.dataset.filaTocar) tocarDaFila(item);
+      else if (b.dataset.filaRemover) { fila = await removerDaFila(item.id); desenharFila(); }
+      else if (b.dataset.filaMover) { fila = await moverNaFila(item.id, Number(b.dataset.filaMover)); desenharFila(); el.querySelector(`[data-fila-mover="${b.dataset.filaMover}"][data-id="${item.id}"]:not([disabled])`)?.focus(); }
+    } catch (err) { toast(err.message, 'erro'); }
+  });
+
+  const aoMudarFila = (ev) => { fila = ev.detail || fila; desenharFila(); };
+  window.addEventListener('nc:fila-mudou', aoMudarFila);
+  const pararOuvirFila = sala ? sala.ouvir((msg) => { if (msg.tipo === 'fila-mudou' && msg.de !== eu) carregarFila(); }) : () => {};
+  carregarFila();
 
   // ---------------- Chat ----------------
   const chat = montarChat({
@@ -759,6 +937,7 @@ export async function renderizar(el, ctx) {
     const v = videos.find((x) => x.id === cartao.dataset.video);
     if (!v) return;
     if (b.hasAttribute('data-assistir')) carregarLocal(v.youtubeId, v.titulo);
+    else if (b.hasAttribute('data-fila-video')) porNaFila(v.youtubeId, v.titulo);
     else if (b.hasAttribute('data-favoritar')) alternarFavorito(v);
     else if (b.hasAttribute('data-renomear')) {
       const titulo = await formularioTitulo(v.titulo);
@@ -808,7 +987,7 @@ export async function renderizar(el, ctx) {
       const posicaoAgora = () => (Number(atual.posicao) || 0) + (atual.tocando ? (Date.now() - atual.em) / 1000 : 0);
       ultimoRemoto = { ...atual, recebidoEm: 0, posicaoEstimada: posicaoAgora };
       marcarRemoto(false);
-      await mostrarVideo(atual.youtubeId, atual.titulo, { inicio: posicaoAgora(), tocar: false });
+      await mostrarVideo(atual.youtubeId, atual.titulo, { inicio: posicaoAgora(), tocar: false, escolhidoPor: atual.escolhidoPor || atual.de });
       if (atual.tocando) mostrarEntrar(atual.de && atual.de !== eu ? `Entrar na sessão com ${nome(atual.de)}` : 'Continuar a sessão');
     }
   } catch { /* sem ajustes: começa com a tela vazia */ }
@@ -820,6 +999,10 @@ export async function renderizar(el, ctx) {
     pararStatus();
     clearTimeout(timerPersistir);
     clearInterval(relogioCinema);
+    clearTimeout(timerCreditos);
+    clearTimeout(timerCortina);
+    pararOuvirFila();
+    window.removeEventListener('nc:fila-mudou', aoMudarFila);
     chat.limpar();
     window.removeEventListener('nc:recompensas-mudou', aoMudarRecompensas);
     window.removeEventListener('pagehide', gravarAoSair);

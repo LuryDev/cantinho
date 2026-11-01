@@ -719,3 +719,54 @@ html[data-movimento="reduzir"] .chat-bolha { animation: none; }
 .chat-rapido { display: none; }
 .tela-cheia:fullscreen .chat-rapido, .tela-cheia:-webkit-full-screen .chat-rapido { display: flex; gap: .5rem; padding: 0 .6rem .6rem; background: #0b0709; }
 .tela-cheia:fullscreen .chat-rapido .entrada, .tela-cheia:-webkit-full-screen .chat-rapido .entrada { flex: 1; min-width: 0; background: #1d1418; color: #fff; border-color: #3a2a30; }
+
+/* ---------- Cortina ao começar um vídeo ---------- */
+.palco .cortina { transition: width 1.5s cubic-bezier(.55, .05, .25, 1); }
+.palco.cortina-fechada .cortina { width: calc(50% + 2px); transition-duration: .5s; }
+.palco.cortina-fechada .sala-enfeites { opacity: 0; }
+.sala-enfeites { transition: opacity .6s; }
+html[data-movimento="reduzir"] .palco .cortina { transition: none; }
+
+/* ---------- Créditos no fim do vídeo ---------- */
+.creditos { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; padding: 1.5rem; text-align: center; color: #f6ece1;
+  background: radial-gradient(ellipse at 50% 40%, rgba(40, 20, 28, .94), rgba(6, 3, 5, .98)); animation: creditos-entrar .9s ease-out; }
+.creditos.saindo { animation: creditos-sair .7s ease-in forwards; }
+.creditos-conteudo { display: grid; gap: .55rem; max-width: 34ch; animation: creditos-subir 5.6s linear; }
+.creditos p { margin: 0; }
+.creditos-fim { font-family: "Fraunces", Georgia, serif; font-size: clamp(.8rem, .7rem + .5vw, 1rem); letter-spacing: .5em; text-transform: uppercase; color: #d9b98c; }
+.creditos-titulo { font-family: "Fraunces", Georgia, serif; font-weight: 700; font-size: clamp(1.1rem, .9rem + 1.4vw, 2rem); line-height: 1.2; overflow-wrap: anywhere; }
+.creditos-por { font-family: var(--fonte-corpo); font-weight: 400; font-style: italic; opacity: .8; }
+.creditos-escolha { font-size: clamp(.85rem, .8rem + .4vw, 1.1rem); color: #e8d6c8; }
+.creditos-escolha strong { color: #ffd36b; }
+.creditos-proximo { margin-top: .6rem !important; font-size: .85rem; color: #bfa9a0; }
+@keyframes creditos-entrar { from { opacity: 0; } }
+@keyframes creditos-sair { to { opacity: 0; } }
+@keyframes creditos-subir { from { transform: translateY(18px); } to { transform: translateY(-10px); } }
+html[data-movimento="reduzir"] .creditos, html[data-movimento="reduzir"] .creditos-conteudo { animation: none; }
+html[data-movimento="reduzir"] .creditos.saindo { animation: none; opacity: 0; }
+
+/* ---------- Sessões do dia (fila) ---------- */
+.entrada-com-botao { flex-wrap: wrap; }
+.entrada-com-botao > :first-child { flex: 1 1 220px; }
+.fila-cinema { margin-top: 1.25rem; display: grid; gap: .8rem; }
+.fila-topo { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: .6rem 1rem; }
+.fila-topo .subtitulo { margin: 0; display: inline-flex; align-items: center; gap: .45rem; }
+.fila-topo .dica { margin: .2rem 0 0; }
+.fila-vazia { margin: 0; padding: 1rem; border-radius: var(--raio-pequeno); border: 1.5px dashed var(--cor-borda); color: var(--cor-texto-suave); text-align: center; }
+.lista-fila { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+.item-fila { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: .7rem; padding: .5rem .6rem; border-radius: var(--raio-pequeno); background: var(--cor-superficie-2); }
+.item-fila:first-child { outline: 2px solid color-mix(in srgb, var(--cor-primaria) 45%, transparent); }
+.fila-numero { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; background: var(--cor-primaria); color: var(--cor-sobre-primaria); font-size: .8rem; font-weight: 700; }
+.fila-miniatura { width: 88px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 6px; background: #1d1418; }
+.fila-miniatura.sem-imagem { visibility: hidden; }
+.fila-titulo { margin: 0; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fila-info .meta { margin: .1rem 0 0; }
+.fila-acoes { flex-wrap: nowrap; gap: .2rem; }
+.seta-cima, .seta-baixo { display: inline-grid; }
+.seta-cima .icone { transform: rotate(-90deg); }
+.seta-baixo .icone { transform: rotate(90deg); }
+@media (max-width: 560px) {
+  .item-fila { grid-template-columns: auto minmax(0, 1fr); }
+  .fila-miniatura { display: none; }
+  .fila-acoes { grid-column: 1 / -1; justify-content: flex-end; }
+}

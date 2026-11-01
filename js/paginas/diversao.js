@@ -1,12 +1,14 @@
 // Diversão (em desenvolvimento):
 //  - Quadro branco: desenhos do casal. Os dois veem, editam, criam e excluem.
 //    Se os dois abrirem o mesmo desenho, cada traço aparece na hora na tela do outro.
+//  - Álbum de figurinhas: por enquanto só o álbum com os espaços (../album.js)
 //  - Como eu te vejo: uma pergunta nova por dia ("Como eu te vejo se você fosse um animal").
 //    Cada um desenha a resposta e envia; o desenho chega nas Cartinhas do outro.
 import { listar, salvar, remover, enviarImagem, removerImagem } from '../store/index.js';
 import { salaAtual } from '../sala-cinema.js';
 import { PERFIS } from '../auth.js';
 import { criarQuadro } from '../quadro.js';
+import { montarAlbum, TOTAL_FIGURINHAS } from '../album.js';
 import { avisarOutro } from '../bilhetes.js';
 import { notificarOutro } from '../notificacoes.js';
 import { cartaVisivelPara } from './cartinhas.js';
@@ -149,6 +151,17 @@ export async function renderizar(el, ctx) {
             <ul class="grade-respostas" role="list">${trocadas.slice(0, 12).map(htmlResposta).join('')}</ul>` : ''}
         </section>
 
+        <section class="cartao album" aria-labelledby="titulo-album">
+          <div class="album-topo">
+            <div>
+              <h2 id="titulo-album" class="subtitulo">${icone('estrela')} Álbum de figurinhas <span class="selo selo-desenvolvimento">Em breve</span></h2>
+              <p class="dica">O álbum do casal já está pronto, com os espaços esperando. As figurinhas chegam em breve.</p>
+            </div>
+            <p class="album-contador"><strong>0</strong> de ${TOTAL_FIGURINHAS} figurinhas coladas</p>
+          </div>
+          <div data-album-livro></div>
+        </section>
+
         <section class="secao-quadro" aria-labelledby="titulo-quadro">
           <div class="cabecalho-secao pequeno">
             <div>
@@ -167,6 +180,7 @@ export async function renderizar(el, ctx) {
               </div>`}
         </section>`;
       if (focar) el.querySelector('h1')?.focus();
+      montarAlbum(el.querySelector('[data-album-livro]'));
 
       const aoReceber = (msg) => {
         if (msg.de === eu) return;
