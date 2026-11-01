@@ -8,10 +8,16 @@ import { salaAtual } from '../sala-cinema.js';
 import { PERFIS } from '../auth.js';
 import { criarQuadro } from '../quadro.js';
 import { avisarOutro } from '../bilhetes.js';
+import { notificarOutro } from '../notificacoes.js';
 import { cartaVisivelPara } from './cartinhas.js';
 import { icone } from '../ui/icones.js';
 import { enfeitePorTema } from '../ui/ilustracoes.js';
 import { esc, toast, confirmar, formatarData } from '../ui/dom.js';
+
+// Aviso de desenho no quadro branco: no máximo um por desenho a cada 10 minutos,
+// para o salvamento automático não encher o celular do outro de notificações.
+const INTERVALO_AVISO_QUADRO = 10 * 60 * 1000;
+const ultimoAvisoQuadro = new Map();
 
 // ---------------- Pergunta do dia ----------------
 export const PERGUNTAS = [
@@ -211,6 +217,8 @@ export async function renderizar(el, ctx) {
       let timerSalvar = null;
       let abertoEm = Date.now();
       const vistos = new Map(); // perfil → último sinal de que está neste desenho
+      let desenhouAgora = false; // desenhou algo desde o último salvamento
+      history.replaceState(null, '', `#/diversao?desenho=${encodeURIComponent(atual.id)}`);
 
       el.innerHTML = `
         <h1 class="sr-only" tabindex="-1">Quadro branco</h1>
@@ -238,7 +246,7 @@ export async function renderizar(el, ctx) {
         eu,
         rotulo: `Quadro: ${atual.titulo || 'desenho'}`,
         aoEnviar: enviar,
-        aoMudar: () => { mostrarStatus(); agendarSalvar(); },
+        aoMudar: () => { desenhouAgora = true; mostrarStatus(); agendarSalvar(); },
       });
 
       function mostrarStatus(texto) {
@@ -265,11 +273,15 @@ export async function renderizar(el, ctx) {
             quadro.marcarSalvo(); // traços feitos durante o envio voltam a marcar "não salvo"
             const img = await enviarImagem(new File([blob], 'desenho.png', { type: 'image/png' }));
             const antigo = atual.imagemPath;
+            const eraNovo = !atual.src && !atual.imagemPath;
+            const comTraco = desenhouAgora;
+            desenhouAgora = false;
             const salvo = await salvar('desenhos', { ...atual, titulo, src: img.src, imagemPath: img.path || null, atualizadoPor: eu });
             atual = salvo;
             desenhos = [salvo, ...desenhos.filter((x) => x.id !== salvo.id)];
             if (antigo && antigo !== img.path) removerImagem(antigo);
             enviar('quadro-salvo', {});
+            if (comTraco) avisarDesenho(salvo, eraNovo);
             mostrarStatus();
             if (avisar) toast('Desenho salvo!', 'sucesso', { duracao: 1800 });
           } catch (e) {
@@ -281,6 +293,22 @@ export async function renderizar(el, ctx) {
           }
         })();
         return salvando;
+      }
+
+      /** Conta para o outro que tem desenho novo (se ele não estiver olhando este desenho agora). */
+      function avisarDesenho(d, novo) {
+        const outroAqui = Date.now() - (vistos.get(outro.id) || 0) < 10000;
+        const ultimo = ultimoAvisoQuadro.get(d.id) || 0;
+        if (outroAqui || Date.now() - ultimo < INTERVALO_AVISO_QUADRO) return;
+        ultimoAvisoQuadro.set(d.id, Date.now());
+        const titulo = d.titulo || 'Desenho sem título';
+        if (podeSincronizar()) sala.enviar('quadro-novidade', { desenhoId: d.id, para: outro.id, titulo, novo });
+        notificarOutro({
+          titulo: novo ? `${ctx.perfil.nome} fez um desenho novo` : `${ctx.perfil.nome} desenhou no quadro branco`,
+          corpo: `"${titulo}". Toque para ver (e desenhar junto).`,
+          url: `/#/diversao?desenho=${d.id}`,
+          tag: 'quadro-branco',
+        });
       }
 
       function desenharPresenca() {

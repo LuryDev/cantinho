@@ -72,6 +72,7 @@ async function abrirApp(perfil, { primeiraEntrada, animar }) {
   sala.ouvir((msg) => {
     if (msg.tipo === 'aviso') { receberAviso(msg); return; }
     if (msg.tipo === 'convite') { receberConvite(msg); return; }
+    if (msg.tipo === 'quadro-novidade') { receberDesenho(msg); return; }
     if (msg.tipo === 'chat' && msg.texto && !msg.convite && rotaDoHash().id !== 'cinema') {
       const texto = String(msg.texto);
       toast(`${PERFIS[msg.de]?.nome || 'Alguém'} no chat do cinema: "${texto.length > 80 ? `${texto.slice(0, 80)}…` : texto}"`, 'info', {
@@ -117,6 +118,18 @@ async function removerAparelhoDaConta() {
   const reg = await navigator.serviceWorker?.getRegistration('/');
   const inscricao = await reg?.pushManager.getSubscription();
   if (inscricao) await clienteSupabase().from('push_inscricoes').delete().eq('endpoint', inscricao.endpoint);
+}
+
+/** O outro desenhou no quadro branco (site aberto): aviso com "Ver", se não estiver no mesmo desenho. */
+function receberDesenho(msg) {
+  if (!perfilAtual || msg.para !== perfilAtual.id) return;
+  if (location.hash.includes(`desenho=${encodeURIComponent(msg.desenhoId)}`)) return;
+  const quem = PERFIS[msg.de]?.nome || 'Alguém';
+  const titulo = String(msg.titulo || 'Desenho sem título').slice(0, 60);
+  toast(msg.novo ? `${quem} fez um desenho novo: "${titulo}"` : `${quem} desenhou em "${titulo}"`, 'info', {
+    acao: { texto: 'Ver', executar: () => { location.hash = `#/diversao?desenho=${encodeURIComponent(msg.desenhoId)}`; } },
+    duracao: 9000,
+  });
 }
 
 /** O outro perfil chamou para assistir junto: janela com "Entrar no cinema". */
