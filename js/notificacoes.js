@@ -188,7 +188,7 @@ export async function notificarOutro({ titulo, corpo, url = '/', tag } = {}) {
     return await chamarServidor({ titulo, corpo, url, tag });
   } catch (e) {
     console.warn('[notificações]', e.message);
-    return { enviadas: 0, motivo: 'erro' };
+    return { enviadas: 0, motivo: 'erro', erro: e.message };
   }
 }
 

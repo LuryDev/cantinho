@@ -93,9 +93,25 @@ export function avisarOutro(c) {
   } catch { /* sem sala: o aviso aparece quando abrir o site */ }
   const de = nomeDe(c.de);
   const url = `/#/cartinhas?abrir=${encodeURIComponent(c.id)}`;
-  if (c.tipo === 'elogio') notificarOutro({ titulo: `${de} te mandou um elogio`, corpo: c.mensagem, url });
-  else if (c.tipo === 'lembrete') notificarOutro({ titulo: `${de} lembrou de você`, corpo: `${c.emoji || ''} ${c.mensagem}`.trim(), url });
-  else notificarOutro({ titulo: `Chegou uma cartinha de ${de}`, corpo: 'Toque para abrir o envelope.', url });
+  const envio = c.tipo === 'elogio'
+    ? notificarOutro({ titulo: `${de} te mandou um elogio`, corpo: c.mensagem, url })
+    : c.tipo === 'lembrete'
+      ? notificarOutro({ titulo: `${de} lembrou de você`, corpo: `${c.emoji || ''} ${c.mensagem}`.trim(), url })
+      : notificarOutro({ titulo: `Chegou uma cartinha de ${de}`, corpo: 'Toque para abrir o envelope.', url });
+  envio.then((r) => explicarEntrega(r, c.para)).catch(() => {});
+}
+
+// Conta para quem enviou por que a notificação não foi para o celular (uma vez por motivo)
+const motivosAvisados = new Set();
+function explicarEntrega(r, paraId) {
+  if (!r || r.enviadas > 0 || motivosAvisados.has(r.motivo)) return;
+  const quem = nomeDe(paraId);
+  let texto = '';
+  if (r.motivo === 'sem-aparelho') texto = `${quem} ainda não ativou as notificações em nenhum aparelho (Aparência → Ativar notificações, no celular de ${quem}). Ela vai ver quando abrir o site.`.replace('Ela vai', paraId === 'lury' ? 'Ele vai' : 'Ela vai');
+  else if (r.motivo === 'erro') texto = `A notificação para ${quem} não foi enviada: ${r.erro || 'erro no servidor'}`;
+  if (!texto) return;
+  motivosAvisados.add(r.motivo);
+  toast(texto, 'info', { duracao: 9000 });
 }
 
 async function enviarBilhete(doc, perfil) {
