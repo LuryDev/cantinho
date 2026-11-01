@@ -8,7 +8,7 @@ import { listar, salvar, remover, enviarImagem, removerImagem } from '../store/i
 import { salaAtual } from '../sala-cinema.js';
 import { PERFIS } from '../auth.js';
 import { criarQuadro } from '../quadro.js';
-import { montarAlbum, TOTAL_FIGURINHAS } from '../album.js';
+import { montarAlbum } from '../album.js';
 import { avisarOutro } from '../bilhetes.js';
 import { notificarOutro } from '../notificacoes.js';
 import { cartaVisivelPara } from './cartinhas.js';
@@ -151,17 +151,6 @@ export async function renderizar(el, ctx) {
             <ul class="grade-respostas" role="list">${trocadas.slice(0, 12).map(htmlResposta).join('')}</ul>` : ''}
         </section>
 
-        <section class="cartao album" aria-labelledby="titulo-album">
-          <div class="album-topo">
-            <div>
-              <h2 id="titulo-album" class="subtitulo">${icone('estrela')} Álbum de figurinhas <span class="selo selo-desenvolvimento">Em breve</span></h2>
-              <p class="dica">O álbum do casal já está pronto, com os espaços esperando. As figurinhas chegam em breve.</p>
-            </div>
-            <p class="album-contador"><strong>0</strong> de ${TOTAL_FIGURINHAS} figurinhas coladas</p>
-          </div>
-          <div data-album-livro></div>
-        </section>
-
         <section class="secao-quadro" aria-labelledby="titulo-quadro">
           <div class="cabecalho-secao pequeno">
             <div>
@@ -178,6 +167,16 @@ export async function renderizar(el, ctx) {
                 <h3>Nenhum desenho ainda</h3>
                 <p>Crie um quadro e chame ${esc(outro.nome)} para desenhar junto.</p>
               </div>`}
+        </section>
+        <section class="cartao album" aria-label="Álbum de figurinhas (em desenvolvimento)">
+          <div class="album-topo">
+            <div>
+              <h2 class="subtitulo">${icone('estrela')} Desenvolvendo <span class="selo selo-desenvolvimento">Desenvolvendo</span></h2>
+              <p class="dica">Desenvolvendo</p>
+            </div>
+            <p class="album-contador">Desenvolvendo</p>
+          </div>
+          <div data-album-livro></div>
         </section>`;
       if (focar) el.querySelector('h1')?.focus();
       montarAlbum(el.querySelector('[data-album-livro]'));

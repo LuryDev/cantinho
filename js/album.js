@@ -1,8 +1,9 @@
-// Álbum de figurinhas (aba Diversão) — por enquanto só o álbum com os espaços vazios.
+// Álbum de figurinhas (aba Diversão) — por enquanto só o álbum com os espaços vazios
+// e todos os textos visíveis como "Desenvolvendo" (TEXTO_PROVISORIO).
+// Os títulos reais das páginas ficam guardados em PAGINAS_ALBUM para quando o álbum ficar pronto.
 // A ideia é, no futuro, preencher `coladas` com as figurinhas que o casal ganhar.
 // Para mudar páginas ou espaços, edite PAGINAS_ALBUM.
 import { icone } from './ui/icones.js';
-import { esc } from './ui/dom.js';
 
 // Formatos dos espaços: retrato (3:4), quadrado e redondo. "especial" = figurinha brilhante.
 const MOLDE = [
@@ -21,21 +22,22 @@ export const PAGINAS_ALBUM = [
 
 export const TOTAL_FIGURINHAS = PAGINAS_ALBUM.reduce((s, p) => s + p.espacos.length, 0);
 
+const TEXTO_PROVISORIO = 'Desenvolvendo';
+
 let spreadAtual = 0; // par de páginas aberto (lembra ao voltar para a aba)
 
 function htmlPagina(p, indice, lado) {
   return `
     <div class="album-pagina ${lado}">
-      <h3 class="album-pagina-titulo">${icone(p.icone)} ${esc(p.titulo)}</h3>
+      <h3 class="album-pagina-titulo">${icone(p.icone)} ${TEXTO_PROVISORIO}</h3>
       <ul class="album-espacos" role="list">
         ${p.espacos.map((e) => `
-          <li class="album-espaco formato-${e.formato} ${e.especial ? 'especial' : ''}" aria-label="Espaço da figurinha ${e.numero}${e.especial ? ' (especial)' : ''}, vazio">
+          <li class="album-espaco formato-${e.formato} ${e.especial ? 'especial' : ''}" aria-label="Espaço vazio (em desenvolvimento)">
             <span class="album-silhueta" aria-hidden="true">${icone(p.icone)}</span>
-            <span class="album-num" aria-hidden="true">${String(e.numero).padStart(2, '0')}</span>
-            ${e.especial ? '<span class="album-brilho" aria-hidden="true">Especial</span>' : ''}
+            ${e.especial ? `<span class="album-brilho" aria-hidden="true">${TEXTO_PROVISORIO}</span>` : ''}
           </li>`).join('')}
       </ul>
-      <span class="album-rodape-pagina" aria-hidden="true">${indice + 1}</span>
+      <span class="album-rodape-pagina" aria-hidden="true">${TEXTO_PROVISORIO}</span>
     </div>`;
 }
 
@@ -54,7 +56,7 @@ export function montarAlbum(alvo) {
       </div>
       <div class="album-nav">
         <button type="button" class="botao-icone contorno" data-album="-1" aria-label="Páginas anteriores" ${spreadAtual === 0 ? 'disabled' : ''}>${icone('esquerda')}</button>
-        <span>Páginas ${i + 1}${dir ? `–${i + 2}` : ''} de ${PAGINAS_ALBUM.length}</span>
+        <span>${TEXTO_PROVISORIO}</span>
         <button type="button" class="botao-icone contorno" data-album="1" aria-label="Próximas páginas" ${spreadAtual >= totalSpreads - 1 ? 'disabled' : ''}>${icone('direita')}</button>
       </div>`;
     if (focar) alvo.querySelector(`[data-album="${focar}"]:not([disabled])`)?.focus();
