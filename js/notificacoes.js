@@ -110,7 +110,7 @@ async function salvarInscricao(inscricao, perfil) {
 export async function ativarNotificacoes(perfil) {
   const estado = await estadoNotificacoes();
   if (estado === 'demo') throw new Error('No modo demonstração não há notificações (elas precisam do Supabase).');
-  if (estado === 'sem-config') throw new Error('As notificações ainda não foram configuradas no servidor (chaves VAPID na Vercel).');
+  if (estado === 'sem-config') throw new Error(config.notificacoesErro || 'As notificações ainda não foram configuradas no servidor (chaves VAPID na Vercel).');
   if (estado === 'precisa-instalar') throw new Error('No iPhone, adicione o site à Tela de Início e abra pelo ícone para ativar.');
   if (estado === 'nao-suportado') throw new Error('Este navegador não aceita notificações de sites.');
   const permissao = await Notification.requestPermission();
@@ -119,7 +119,11 @@ export async function ativarNotificacoes(perfil) {
     : 'Permissão não concedida.');
   const reg = registro || await registrarServiceWorker() || await navigator.serviceWorker.ready;
   let inscricao = await reg.pushManager.getSubscription();
-  const chave = base64ParaBytes(config.vapidPublicKey);
+  let chave;
+  try { chave = base64ParaBytes(config.vapidPublicKey); } catch { chave = null; }
+  if (!chave || chave.length !== 65 || chave[0] !== 4) {
+    throw new Error('A chave pública das notificações (VAPID_PUBLIC_KEY) na Vercel está errada. Rode "npm run chaves" de novo, copie só o que vem depois do "=" e faça Redeploy.');
+  }
   if (inscricao) {
     // Chaves trocadas no servidor: refaz a inscrição
     const atual = inscricao.options?.applicationServerKey;

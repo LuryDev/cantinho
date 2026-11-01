@@ -5,7 +5,7 @@
 import { gerarId } from '../ui/dom.js';
 import { reduzirImagem } from './imagens.js';
 
-const COLECOES = new Set(['cartas', 'listas', 'filmes', 'videos', 'memorias', 'mensagens']);
+const COLECOES = new Set(['cartas', 'listas', 'filmes', 'videos', 'memorias', 'mensagens', 'desenhos']);
 const BUCKET = 'memorias';
 const VALIDADE_URL = 60 * 60; // 1 hora
 
@@ -99,6 +99,13 @@ export function criarStoreSupabase(cliente, perfil) {
     },
 
     /** Envia a imagem ao bucket privado "memorias", numa pasta com o id do casal. */
+    /** Apaga uma imagem do Storage (ex.: a versão antiga de um desenho). */
+    async removerImagem(caminho) {
+      if (!caminho) return;
+      const { error } = await cliente.storage.from(BUCKET).remove([caminho]);
+      if (error) console.warn('[Supabase] remover imagem:', error);
+    },
+
     async enviarImagem(arquivo) {
       const { blob } = await reduzirImagem(arquivo, { ladoMaximo: 1600, qualidade: 0.85 });
       const caminho = `${perfil.casalId}/${gerarId()}.jpg`;

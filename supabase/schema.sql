@@ -78,7 +78,7 @@ do $$
 declare
   t text;
 begin
-  foreach t in array array['cartas', 'listas', 'filmes', 'videos', 'memorias', 'mensagens'] loop
+  foreach t in array array['cartas', 'listas', 'filmes', 'videos', 'memorias', 'mensagens', 'desenhos'] loop
     execute format($f$
       create table if not exists public.%1$I (
         id             uuid primary key default gen_random_uuid(),

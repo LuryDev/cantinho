@@ -5,7 +5,7 @@ import { dadosDeExemplo } from './exemplos.js';
 import { reduzirImagem } from './imagens.js';
 
 const PREFIXO = 'nc:v1:';
-const COLECOES = ['cartas', 'listas', 'filmes', 'videos', 'memorias', 'mensagens'];
+const COLECOES = ['cartas', 'listas', 'filmes', 'videos', 'memorias', 'mensagens', 'desenhos'];
 
 function ler(chave, padrao) {
   try {
@@ -78,6 +78,8 @@ export function criarStoreLocal() {
     },
 
     /** Guarda a imagem como data URL reduzida. Retorna { src }. */
+    async removerImagem() { /* no modo local a imagem fica dentro do próprio item */ },
+
     async enviarImagem(arquivo) {
       const { dataUrl } = await reduzirImagem(arquivo, { ladoMaximo: 1100, qualidade: 0.78 });
       return { src: dataUrl };

@@ -4,6 +4,7 @@ import {
   ehIOS, ehAndroid, instalado, podeInstalarDireto, instalarApp,
 } from './notificacoes.js';
 import { PERFIS } from './auth.js';
+import { config } from './config.js';
 import { icone } from './ui/icones.js';
 import { esc, toast } from './ui/dom.js';
 
@@ -42,6 +43,7 @@ export function htmlEstado(estado, perfil) {
     case 'demo':
       return `<div class="aviso">${icone('info')}<p>No modo demonstração as notificações ficam desligadas: elas precisam do login real (Supabase).</p></div>${instalar ? `<div class="grupo-botoes">${instalar}</div>` : ''}`;
     case 'sem-config':
+      if (config.notificacoesErro) return `<div class="aviso erro" role="alert">${icone('alerta')}<p>${esc(config.notificacoesErro)}</p></div>`;
       return `<div class="aviso">${icone('info')}<p>As notificações ainda não foram configuradas no servidor. Quem cuida do site precisa gerar as chaves (<code>npm run chaves</code>) e colocar na Vercel — o passo a passo está no README.</p></div>${instalar ? `<div class="grupo-botoes">${instalar}</div>` : ''}`;
     case 'precisa-instalar':
       return `<div class="aviso">${icone('info')}<p>No iPhone, a Apple só libera notificações para sites <strong>adicionados à Tela de Início</strong> e abertos pelo ícone. Veja os passos abaixo.</p></div>`;

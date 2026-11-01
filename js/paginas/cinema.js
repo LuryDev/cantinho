@@ -15,6 +15,7 @@ import { temaAtual, aoMudarTema } from '../tema.js';
 import { somarTempoCinema, gravarTempoCinema, lerProgresso, carregarRecompensas } from '../recompensas.js';
 import { montarPainelConquistas } from '../conquistas.js';
 import { montarChat, MAX_MENSAGEM } from '../chat-cinema.js';
+import { notificarOutro } from '../notificacoes.js';
 
 export const REACOES = {
   risada: { emoji: '😂', nome: 'Risada' },
@@ -182,6 +183,7 @@ export async function renderizar(el, ctx) {
           <span class="interruptor-trilho" aria-hidden="true"></span>
           <span>Assistir junto com ${esc(outro.nome)}</span>
         </label>
+        <button type="button" class="botao" data-chamar>${icone('megafone')} Chamar ${esc(outro.nome)}</button>
         <button type="button" class="botao-sec" data-favoritar-atual disabled>${icone('estrela')} Favoritar</button>
         <button type="button" class="botao-sec" data-tela-cheia disabled>${icone('telacheia')} Tela cheia</button>
         ${suportaTelaCheia ? '' : '<span class="dica">Tela cheia não é suportada neste navegador.</span>'}
@@ -639,6 +641,63 @@ export async function renderizar(el, ctx) {
     aoAssistir: (id) => carregarLocal(id),
   });
   if (/[?&]chat\b/.test(location.hash)) setTimeout(() => chat.focar(), 300);
+
+  // ---------------- Chamar para assistir ----------------
+  const SUGESTOES_CONVITE = [
+    'Vem ver um vídeo comigo?',
+    'Separei um vídeo pra gente, vem!',
+    'A pipoca tá pronta, só falta você.',
+    'Sessão começando! Guardei seu lugar.',
+    `Bora assistir junto, ${outro.nome}?`,
+  ];
+
+  function chamarParaAssistir() {
+    const video = videoAtual ? { youtubeId: videoAtual.youtubeId, titulo: videoAtual.titulo } : null;
+    const { el: modal, fechar } = abrirModal({
+      titulo: `Chamar ${outro.nome} para assistir`,
+      corpo: `
+        <form class="formulario form-bilhete" id="form-convite" novalidate>
+          <div class="campo">
+            <label for="texto-convite">Mensagem do convite</label>
+            <textarea id="texto-convite" name="texto" rows="2" maxlength="140" required placeholder="Ex.: Vem ver um vídeo comigo?">${esc(SUGESTOES_CONVITE[0])}</textarea>
+          </div>
+          <div class="sugestoes" role="group" aria-label="Sugestões de convite">
+            ${SUGESTOES_CONVITE.map((s) => `<button type="button" class="chip-sugestao" data-sugestao="${esc(s)}">${esc(s)}</button>`).join('')}
+          </div>
+          <p class="dica">${video
+            ? `Vai junto o vídeo que está na tela: <strong>${esc(video.titulo || 'vídeo do YouTube')}</strong>. Quando ${esc(outro.nome)} entrar, vocês assistem sincronizados.`
+            : `Ainda não tem vídeo na tela: ${esc(outro.nome)} entra no Cinema e vocês escolhem juntos.`}</p>
+          <p class="dica">${esc(outro.nome)} recebe um aviso na hora se estiver no site, ou uma notificação no celular se tiver ativado.</p>
+        </form>`,
+      rodape: `<button type="button" class="botao-fantasma" data-fechar>Cancelar</button>
+        <button type="submit" form="form-convite" class="botao">${icone('megafone')} Chamar</button>`,
+    });
+    const form = modal.querySelector('form');
+    const campo = form.elements.texto;
+    campo.focus();
+    campo.select();
+    modal.querySelectorAll('[data-sugestao]').forEach((b) => b.addEventListener('click', () => { campo.value = b.dataset.sugestao; campo.focus(); }));
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      limparErros(form);
+      const texto = campo.value.replace(/\s+/g, ' ').trim().slice(0, 140);
+      if (!texto) return marcarErro(campo, 'Escreva o convite.');
+      fechar();
+      if (sala?.status === 'ok') sala.enviar('convite', { para: outro.id, texto, youtubeId: video?.youtubeId || null, titulo: video?.titulo || '' });
+      chat.enviar(texto, { notificar: false, convite: true });
+      const r = await notificarOutro({
+        titulo: `${ctx.perfil.nome} te chamou para assistir`,
+        corpo: video?.titulo ? `${texto} (${video.titulo})` : texto,
+        url: '/#/cinema?convite',
+        tag: 'convite-cinema',
+      });
+      const presente = sala?.presentes?.has(outro.id);
+      if (presente || r?.enviadas > 0 || r?.motivo === 'esta-vendo') toast(`Convite enviado para ${outro.nome}!`, 'sucesso');
+      else if (r?.motivo === 'sem-aparelho') toast(`Convite guardado no chat. ${outro.nome} não está no site e ainda não ativou as notificações no celular.`, 'info', { duracao: 8000 });
+      else toast(`Convite guardado no chat. ${outro.nome} vê quando abrir o site.`, 'info', { duracao: 6000 });
+    });
+  }
+  el.querySelector('[data-chamar]').addEventListener('click', chamarParaAssistir);
 
   // ---------------- Eventos ----------------
   form.addEventListener('submit', (e) => {

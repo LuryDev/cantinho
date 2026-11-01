@@ -1,7 +1,7 @@
 // Ponto de entrada: sessão → boas-vindas → estrutura da página → rotas.
 import { injetarSpriteIcones, icone } from './ui/icones.js';
 import { ICONE_TEMA } from './ui/ilustracoes.js';
-import { esc, toast } from './ui/dom.js';
+import { esc, toast, abrirModal } from './ui/dom.js';
 import { TEMAS, aplicarTema, aplicarPreferencias, lerPreferencias, temaDeEntrada, temaSalvo, temaAtual, aoMudarTema } from './tema.js';
 import { iniciarAuth, modoAuth, clienteSupabase, sair, salvarTemaRemoto, aoSairDaSessao, PERFIS } from './auth.js';
 import { mostrarLogin } from './login.js';
@@ -20,6 +20,7 @@ export const ROTAS = [
   { id: 'cinemateca', titulo: 'Cinemateca', icone: 'filme', modulo: () => import('./paginas/cinemateca.js') },
   { id: 'cinema', titulo: 'Cinema', icone: 'cinema', modulo: () => import('./paginas/cinema.js') },
   { id: 'memorias', titulo: 'Memórias', icone: 'imagem', modulo: () => import('./paginas/memorias.js') },
+  { id: 'diversao', titulo: 'Diversão', icone: 'pincel', modulo: () => import('./paginas/diversao.js') },
   { id: 'aparencia', titulo: 'Aparência', icone: 'paleta', modulo: () => import('./paginas/aparencia.js') },
 ];
 const NAV_INFERIOR = ['inicio', 'cartinhas', 'listas', 'cinema'];
@@ -70,7 +71,8 @@ async function abrirApp(perfil, { primeiraEntrada, animar }) {
   const sala = iniciarSala(perfil, { modo: modoAuth(), cliente: clienteSupabase() });
   sala.ouvir((msg) => {
     if (msg.tipo === 'aviso') { receberAviso(msg); return; }
-    if (msg.tipo === 'chat' && msg.texto && rotaDoHash().id !== 'cinema') {
+    if (msg.tipo === 'convite') { receberConvite(msg); return; }
+    if (msg.tipo === 'chat' && msg.texto && !msg.convite && rotaDoHash().id !== 'cinema') {
       const texto = String(msg.texto);
       toast(`${PERFIS[msg.de]?.nome || 'Alguém'} no chat do cinema: "${texto.length > 80 ? `${texto.slice(0, 80)}…` : texto}"`, 'info', {
         acao: { texto: 'Responder', executar: () => { location.hash = '#/cinema?chat'; } },
@@ -115,6 +117,36 @@ async function removerAparelhoDaConta() {
   const reg = await navigator.serviceWorker?.getRegistration('/');
   const inscricao = await reg?.pushManager.getSubscription();
   if (inscricao) await clienteSupabase().from('push_inscricoes').delete().eq('endpoint', inscricao.endpoint);
+}
+
+/** O outro perfil chamou para assistir junto: janela com "Entrar no cinema". */
+function receberConvite(msg) {
+  if (!perfilAtual || msg.para !== perfilAtual.id) return;
+  const quem = PERFIS[msg.de]?.nome || 'Alguém';
+  const texto = String(msg.texto || 'Vem assistir comigo?').slice(0, 140);
+  const noCinema = rotaDoHash().id === 'cinema';
+  if (noCinema || document.querySelector('dialog[open]')) {
+    toast(`${quem} te chamou para assistir: "${texto}"`, 'info', noCinema ? { duracao: 9000 } : {
+      acao: { texto: 'Entrar', executar: () => { location.hash = '#/cinema'; } }, duracao: 20000,
+    });
+    return;
+  }
+  const { el, fechar } = abrirModal({
+    rotulo: `${quem} te chamou para assistir`,
+    tamanho: 'pequeno convite-modal',
+    corpo: `
+      <div class="convite-conteudo">
+        <span class="convite-icone" aria-hidden="true">${icone('megafone')}</span>
+        <p class="sobretitulo">${esc(quem)} te chamou para assistir</p>
+        <p class="convite-texto">"${esc(texto)}"</p>
+        ${msg.titulo ? `<p class="dica">${icone('play')} ${esc(msg.titulo)}</p>` : ''}
+      </div>`,
+    rodape: `<button type="button" class="botao-fantasma" data-fechar>Agora não</button>
+      <button type="button" class="botao" data-entrar-convite>${icone('cinema')} Entrar no cinema</button>`,
+  });
+  const entrar = el.querySelector('[data-entrar-convite]');
+  entrar.focus();
+  entrar.addEventListener('click', () => { fechar(); location.hash = '#/cinema'; });
 }
 
 /** Cartinha, elogio ou lembrete que o outro perfil acabou de enviar (site aberto). */

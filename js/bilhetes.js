@@ -11,6 +11,7 @@ import { esc, toast, abrirModal, marcarErro, limparErros } from './ui/dom.js';
 export const TIPOS_BILHETE = {
   elogio: { nome: 'Elogio', icone: 'sparkle' },
   lembrete: { nome: 'Lembre de mim', icone: 'coracao' },
+  desenho: { nome: 'Como eu te vejo', icone: 'pincel' }, // enviado pela aba Diversão
 };
 export const ehBilhete = (c) => Boolean(TIPOS_BILHETE[c?.tipo]);
 
@@ -61,12 +62,22 @@ export function descricaoNova(c) {
   const quem = nomeDe(c.de);
   if (c.tipo === 'elogio') return `${quem} te mandou um elogio!`;
   if (c.tipo === 'lembrete') return `${quem} lembrou de você: ${c.emoji || ''} "${c.mensagem}"`.replace(/\s+/g, ' ');
+  if (c.tipo === 'desenho') return `${quem} te mandou um desenho: "${c.mensagem}"`;
   return `${quem} te mandou uma cartinha!`;
 }
 
 /** O bilhete desenhado (usado na coleção, na leitura e na prévia). */
 export function htmlBilhete(c, { compacto = false } = {}) {
   const de = nomeDe(c.de);
+  if (c.tipo === 'desenho') {
+    return `
+      <figure class="bilhete bilhete-desenho ${compacto ? 'compacto' : ''}">
+        <p class="bilhete-rotulo">${icone('pincel')} ${esc(c.pergunta || 'Como eu te vejo')}</p>
+        ${c.src ? `<img src="${esc(c.src)}" alt="Desenho de ${esc(de)}: ${esc(c.pergunta || 'Como eu te vejo')}" loading="lazy">` : '<p class="dica">A imagem não carregou.</p>'}
+        ${c.legenda ? `<figcaption class="bilhete-texto">${esc(c.legenda)}</figcaption>` : ''}
+        <p class="bilhete-assinatura">— ${esc(de)}</p>
+      </figure>`;
+  }
   if (c.tipo === 'lembrete') {
     return `
       <div class="bilhete bilhete-lembrete ${compacto ? 'compacto' : ''}">
@@ -93,11 +104,12 @@ export function avisarOutro(c) {
   } catch { /* sem sala: o aviso aparece quando abrir o site */ }
   const de = nomeDe(c.de);
   const url = `/#/cartinhas?abrir=${encodeURIComponent(c.id)}`;
-  const envio = c.tipo === 'elogio'
-    ? notificarOutro({ titulo: `${de} te mandou um elogio`, corpo: c.mensagem, url })
-    : c.tipo === 'lembrete'
-      ? notificarOutro({ titulo: `${de} lembrou de você`, corpo: `${c.emoji || ''} ${c.mensagem}`.trim(), url })
-      : notificarOutro({ titulo: `Chegou uma cartinha de ${de}`, corpo: 'Toque para abrir o envelope.', url });
+  const textos = {
+    elogio: { titulo: `${de} te mandou um elogio`, corpo: c.mensagem },
+    lembrete: { titulo: `${de} lembrou de você`, corpo: `${c.emoji || ''} ${c.mensagem}`.trim() },
+    desenho: { titulo: `${de} te mandou um desenho`, corpo: c.legenda ? `${c.pergunta}: ${c.legenda}` : c.pergunta },
+  };
+  const envio = notificarOutro({ ...(textos[c.tipo] || { titulo: `Chegou uma cartinha de ${de}`, corpo: 'Toque para abrir o envelope.' }), url });
   envio.then((r) => explicarEntrega(r, c.para)).catch(() => {});
 }
 

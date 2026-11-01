@@ -10,6 +10,7 @@ export const config = Object.freeze({
   tmdbImagens: 'https://image.tmdb.org/t/p/',
   notificacoes: bruto.notificacoes === true,
   vapidPublicKey: String(bruto.vapidPublicKey || '').trim(),
+  notificacoesErro: String(bruto.notificacoesErro || ''),
 });
 
 export const supabaseConfigurado = Boolean(config.supabaseUrl && config.supabaseAnonKey);

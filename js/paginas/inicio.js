@@ -56,7 +56,7 @@ export async function renderizar(el, ctx) {
   const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
   let juntos = normalizarJuntos(ajustes.juntos);
   const nomePerfil = (id) => PERFIS[id]?.nome || '';
-  const textoNova = (c) => (c.tipo === 'elogio' ? `Chegou um elogio de ${nomePerfil(c.de)}!` : c.tipo === 'lembrete' ? `${nomePerfil(c.de)} lembrou de você!` : `Chegou uma cartinha de ${nomePerfil(c.de)}!`);
+  const textoNova = (c) => (c.tipo === 'elogio' ? `Chegou um elogio de ${nomePerfil(c.de)}!` : c.tipo === 'lembrete' ? `${nomePerfil(c.de)} lembrou de você!` : c.tipo === 'desenho' ? `${nomePerfil(c.de)} te mandou um desenho!` : `Chegou uma cartinha de ${nomePerfil(c.de)}!`);
   const hora = (iso) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
   /** Curiosidade do encontro atual (ao vivo) ou do último encontro. */

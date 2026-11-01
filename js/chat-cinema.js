@@ -83,9 +83,9 @@ export function montarChat({ painel, flutuante, formRapido, perfil, sala, contex
     const idYt = extrairId(m.texto.match(/\S*(?:youtu\.be|youtube\.com)\S*/i)?.[0] || '');
     return `
       ${novoDia ? `<li class="chat-dia" role="presentation"><span>${esc(rotuloDia(m.em))}</span></li>` : ''}
-      <li class="msg ${minha ? 'minha' : 'dele'} ${agrupada ? 'agrupada' : ''} ${m.falhou ? 'falhou' : ''}" data-msg="${esc(m.idLocal || m.id)}">
+      <li class="msg ${minha ? 'minha' : 'dele'} ${agrupada ? 'agrupada' : ''} ${m.falhou ? 'falhou' : ''} ${m.convite ? 'convite' : ''}" data-msg="${esc(m.idLocal || m.id)}">
         <span class="sr-only">${esc(nome(m.de))} às ${esc(hora(m.em))}:</span>
-        <div class="msg-balao"><p>${htmlTexto(m.texto)}</p>
+        <div class="msg-balao">${m.convite ? `<span class="msg-convite">${icone('megafone')} Convite para assistir</span>` : ''}<p>${htmlTexto(m.texto)}</p>
           ${idYt ? `<button type="button" class="botao-sec pequeno" data-assistir-link="${esc(idYt)}">${icone('play')} Colocar na tela</button>` : ''}
         </div>
         <p class="msg-meta" aria-hidden="${agrupada ? 'true' : 'false'}">
@@ -125,7 +125,7 @@ export function montarChat({ painel, flutuante, formRapido, perfil, sala, contex
   }
 
   // ---------------- Enviar ----------------
-  async function enviar(texto) {
+  async function enviar(texto, { notificar = true, convite = false } = {}) {
     texto = String(texto || '').replace(/\s+/g, ' ').trim().slice(0, MAX_MENSAGEM);
     if (!texto) return false;
     const ctx = contexto() || {};
@@ -137,11 +137,12 @@ export function montarChat({ painel, flutuante, formRapido, perfil, sala, contex
       youtubeId: ctx.youtubeId || null,
       titulo: ctx.titulo || '',
       posicao: ctx.youtubeId ? Math.floor(ctx.posicao || 0) : null,
+      ...(convite ? { convite: true } : {}),
     };
     receber(m, { flutuar: false });
     rolarFim();
     if (sala?.status === 'ok') sala.enviar('chat', m);
-    if (Date.now() - ultimaNotificacao > INTERVALO_NOTIFICACAO) {
+    if (notificar && Date.now() - ultimaNotificacao > INTERVALO_NOTIFICACAO) {
       ultimaNotificacao = Date.now();
       notificarOutro({ titulo: `${perfil.nome} no chat do cinema`, corpo: texto, url: '/#/cinema?chat', tag: 'chat-cinema' });
     }
@@ -196,7 +197,7 @@ export function montarChat({ painel, flutuante, formRapido, perfil, sala, contex
     if (msg.tipo === 'chat' && msg.texto) {
       clearTimeout(timerDigitando);
       digitando.textContent = '';
-      receber({ idLocal: msg.idLocal, de: msg.de, texto: String(msg.texto).slice(0, MAX_MENSAGEM), em: msg.em ? new Date(msg.em).toISOString() : new Date().toISOString(), youtubeId: msg.youtubeId || null, titulo: msg.titulo || '', posicao: msg.posicao });
+      receber({ idLocal: msg.idLocal, de: msg.de, texto: String(msg.texto).slice(0, MAX_MENSAGEM), em: msg.em ? new Date(msg.em).toISOString() : new Date().toISOString(), youtubeId: msg.youtubeId || null, titulo: msg.titulo || '', posicao: msg.posicao, convite: Boolean(msg.convite) });
     } else if (msg.tipo === 'digitando') {
       digitando.textContent = `${nome(msg.de)} está digitando…`;
       clearTimeout(timerDigitando);
@@ -219,6 +220,7 @@ export function montarChat({ painel, flutuante, formRapido, perfil, sala, contex
     });
 
   return {
+    enviar,
     focar: () => { painel.scrollIntoView({ behavior: 'smooth', block: 'center' }); form.elements.texto.focus({ preventScroll: true }); },
     limpar: () => { pararOuvir(); clearTimeout(timerDigitando); },
   };

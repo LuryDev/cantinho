@@ -49,11 +49,19 @@ export async function renderizar(el, ctx) {
   const naoLida = (c) => grupoDa(c, eu) === 'recebidas' && !c.lidaEm;
 
   // ---------------- Coleção ----------------
+  function tituloBilhete(c) {
+    const recebido = grupoDa(c, eu) === 'recebidas';
+    if (c.tipo === 'elogio') return recebido ? `Elogio de ${nome(c.de)}` : `Elogio para ${nome(c.para)}`;
+    if (c.tipo === 'desenho') return recebido ? `Desenho de ${nome(c.de)}` : `Desenho para ${nome(c.para)}`;
+    return recebido ? `${nome(c.de)} lembrou de você` : `Lembre de mim para ${nome(c.para)}`;
+  }
+  const TEXTO_DOBRADO = { elogio: 'Elogio novo', lembrete: 'Alguém lembrou de você', desenho: 'Um desenho para você' };
+
   function htmlCartaoBilhete(c) {
     const grupo = grupoDa(c, eu);
     const fechada = naoLida(c);
     const tipo = TIPOS_BILHETE[c.tipo];
-    const titulo = c.tipo === 'elogio' ? (grupo === 'recebidas' ? `Elogio de ${nome(c.de)}` : `Elogio para ${nome(c.para)}`) : (grupo === 'recebidas' ? `${nome(c.de)} lembrou de você` : `Lembre de mim para ${nome(c.para)}`);
+    const titulo = tituloBilhete(c);
     const meta = grupo === 'recebidas'
       ? esc(formatarData(c.enviadaEm))
       : `${esc(formatarData(c.enviadaEm))} · ${c.lidaEm ? `${icone('check')} visto` : 'ainda não visto'}`;
@@ -61,7 +69,7 @@ export async function renderizar(el, ctx) {
       <li class="cartao-carta cartao-bilhete ${fechada ? 'nao-lida' : ''}">
         <button type="button" class="carta-miniatura" data-abrir="${esc(c.id)}" aria-label="${fechada ? `Abrir: ${esc(titulo)}` : `Ver: ${esc(titulo)}`}">
           ${fechada
-            ? `<span class="bilhete-dobrado tipo-${esc(c.tipo)}" aria-hidden="true">${icone(tipo.icone, 'cheio')}<span>${c.tipo === 'elogio' ? 'Elogio novo' : 'Alguém lembrou de você'}</span></span>`
+            ? `<span class="bilhete-dobrado tipo-${esc(c.tipo)}" aria-hidden="true">${icone(tipo.icone, 'cheio')}<span>${TEXTO_DOBRADO[c.tipo]}</span></span>`
             : htmlBilhete(c, { compacto: true })}
         </button>
         <div class="cartao-carta-info">
@@ -158,12 +166,15 @@ export async function renderizar(el, ctx) {
   function mostrarLeituraBilhete(carta, { revelar = false } = {}) {
     const grupo = grupoDa(carta, eu);
     const { el: modal, fechar } = abrirModal({
-      titulo: carta.tipo === 'elogio' ? (grupo === 'recebidas' ? `Um elogio de ${nome(carta.de)}` : `Elogio para ${nome(carta.para)}`) : (grupo === 'recebidas' ? `${nome(carta.de)} lembrou de você` : `Lembre de mim para ${nome(carta.para)}`),
+      titulo: carta.tipo === 'elogio' && grupo === 'recebidas' ? `Um elogio de ${nome(carta.de)}` : tituloBilhete(carta),
       corpo: `<div class="bilhete-leitura ${revelar ? 'revelar' : ''}">${htmlBilhete(carta)}</div>
         <p class="meta centro">${grupo === 'recebidas'
           ? `Recebido em ${esc(formatarData(carta.enviadaEm, { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }))}`
           : `Enviado em ${esc(formatarData(carta.enviadaEm, { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }))} · ${carta.lidaEm ? 'visto' : 'ainda não visto'}`}</p>`,
-      rodape: grupo === 'recebidas'
+      rodape: grupo === 'recebidas' && carta.tipo === 'desenho'
+        ? `<button type="button" class="botao-fantasma" data-fechar>Fechar</button>
+           <a class="botao" href="#/diversao?como" data-fechar>${icone('pincel')} Desenhar de volta</a>`
+        : grupo === 'recebidas'
         ? `<button type="button" class="botao-fantasma" data-fechar>Fechar</button>
            <button type="button" class="botao-sec" data-responder-lembrete>${icone('coracao')} Lembre de mim</button>
            <button type="button" class="botao" data-responder-elogio>${icone('sparkle')} Elogiar de volta</button>`
