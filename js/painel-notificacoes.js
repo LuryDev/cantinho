@@ -85,6 +85,7 @@ export function montarPainelNotificacoes(alvo, perfil) {
         ${estado === 'demo' ? '' : htmlComoInstalar({ aberto: estado === 'precisa-instalar' })}
       </div>`;
   };
+
   alvo.addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (!b) return;

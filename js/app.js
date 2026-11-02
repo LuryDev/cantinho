@@ -285,7 +285,7 @@ function montarEstrutura(perfil) {
   shell.innerHTML = `
     <aside class="menu-lateral" id="menu-lateral" aria-label="Menu principal">
       <a class="marca" href="#/inicio">
-        <span class="marca-icone" aria-hidden="true">${ICONE_TEMA[temaAtual()]()}</span>
+        <img class="marca-icone" src="assets/logo.png" alt="" width="44" height="44">
         <span><span class="marca-nome">Nosso Cantinho</span><span class="marca-sub">versão beta</span></span>
       </a>
       <nav aria-label="Seções">
@@ -330,8 +330,6 @@ function montarEstrutura(perfil) {
   });
   removerOuvinteTema?.();
   removerOuvinteTema = aoMudarTema((tema) => {
-    const marca = document.querySelector('.marca-icone');
-    if (marca) marca.innerHTML = ICONE_TEMA[tema]();
     toast(`Tema ${TEMAS[tema].nome} aplicado`, 'sucesso', { duracao: 1800 });
   });
 

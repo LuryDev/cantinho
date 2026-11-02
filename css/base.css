@@ -121,7 +121,7 @@ html[data-decoracao="discreta"] .decoracao .enfeite.opcional { display: none; }
   padding: .25rem .5rem .75rem;
   text-decoration: none; color: inherit;
 }
-.marca-icone { width: 44px; height: 44px; flex: none; }
+.marca-icone { width: 44px; height: 44px; flex: none; object-fit: contain; filter: drop-shadow(0 2px 4px rgba(60, 20, 40, .18)); }
 .marca-nome { font-family: var(--fonte-titulo); font-size: 1.35rem; font-weight: var(--peso-titulo); line-height: 1.1; }
 .marca-sub { display: block; font-family: var(--fonte-mao); font-size: 1.05rem; color: var(--cor-texto-suave); }
 
