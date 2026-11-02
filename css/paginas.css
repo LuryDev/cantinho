@@ -771,3 +771,7 @@ html[data-movimento="reduzir"] .creditos.saindo { animation: none; opacity: 0; }
   .fila-miniatura { display: none; }
   .fila-acoes { grid-column: 1 / -1; justify-content: flex-end; }
 }
+
+/* Cinemateca: busca enquanto digita */
+.busca-filme .dica { margin: .4rem 0 0; }
+.busca-carregando { justify-content: flex-start; padding: .2rem 0 .7rem; }

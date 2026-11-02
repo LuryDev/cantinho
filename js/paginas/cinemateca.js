@@ -22,6 +22,11 @@ export async function renderizar(el, ctx) {
   let erroBusca = '';
   let ultimaBusca = '';
   let controle = null;
+  // Busca enquanto digita (AJAX): espera uma pausa curta, cancela a anterior e guarda o que já veio
+  const ESPERA_DIGITACAO = 400;
+  const MIN_LETRAS = 2;
+  let timerDigitacao = null;
+  const cacheBusca = new Map(); // termo normalizado → resultados
 
   el.innerHTML = '<div class="estado"><span class="spinner pequeno" aria-hidden="true"></span> Carregando filmes…</div>';
   try {
@@ -54,13 +59,32 @@ export async function renderizar(el, ctx) {
           </div>
         </div>`;
     }
+    return `
+      <form class="busca-filme" data-buscar role="search">
+        <label class="sr-only" for="busca-tmdb">Nome do filme</label>
+        <div class="entrada-com-botao">
+          <input class="entrada" id="busca-tmdb" name="q" type="search" placeholder="Comece a digitar o nome do filme…" value="${esc(ultimaBusca)}" autocomplete="off" maxlength="120" aria-describedby="dica-busca-tmdb">
+          <button type="submit" class="botao">${icone('busca')} Buscar</button>
+        </div>
+        <p class="dica" id="dica-busca-tmdb">Os filmes aparecem enquanto você digita.</p>
+      </form>
+      <div class="area-resultados" aria-live="polite">${htmlResultados()}</div>`;
+  }
+
+  function htmlResultados() {
     let corpo = '';
-    if (estadoBusca === 'carregando') corpo = '<div class="estado" role="status"><span class="spinner pequeno" aria-hidden="true"></span> Buscando no TMDB…</div>';
+    const lista = resultados?.length ? htmlListaResultados() : '';
+    if (estadoBusca === 'carregando') corpo = `<div class="estado busca-carregando" role="status"><span class="spinner pequeno" aria-hidden="true"></span> Buscando "${esc(ultimaBusca)}" no TMDB…</div>${lista}`;
     else if (estadoBusca === 'erro') corpo = `<div class="aviso erro" role="alert">${icone('alerta')}<div><p><strong>A pesquisa falhou.</strong> ${esc(erroBusca)}</p><p>Você ainda pode adicionar o filme manualmente.</p></div></div>`;
     else if (resultados && !resultados.length) corpo = `<div class="aviso" role="status">${icone('info')}<p>Nenhum filme encontrado para "<strong>${esc(ultimaBusca)}</strong>". Confira a grafia ou adicione manualmente.</p></div>`;
     else if (resultados?.length) {
-      corpo = `
-        <p class="sr-only" role="status">${resultados.length} resultados para ${esc(ultimaBusca)}</p>
+      corpo = `<p class="sr-only" role="status">${resultados.length} resultados para ${esc(ultimaBusca)}</p>${lista}`;
+    }
+    return corpo;
+  }
+
+  function htmlListaResultados() {
+    return `
         <ul class="resultados-tmdb" role="list">
           ${resultados.map((r, i) => {
             const existente = jaNaColecao(r);
@@ -78,24 +102,22 @@ export async function renderizar(el, ctx) {
           }).join('')}
         </ul>
         <p class="credito-tmdb">Dados e pôsteres: The Movie Database (TMDB). Este produto usa a API do TMDB, mas não é endossado nem certificado pelo TMDB.</p>`;
-    }
-    return `
-      <form class="busca-filme" data-buscar role="search">
-        <label class="sr-only" for="busca-tmdb">Nome do filme</label>
-        <div class="entrada-com-botao">
-          <input class="entrada" id="busca-tmdb" name="q" type="search" placeholder="Pesquisar filme pelo nome…" value="${esc(ultimaBusca)}" autocomplete="off" maxlength="120">
-          <button type="submit" class="botao">${icone('busca')} Buscar</button>
-        </div>
-      </form>
-      <div class="area-resultados" aria-live="polite">${corpo}</div>`;
   }
 
   async function buscar(termo) {
-    termo = termo.trim();
+    termo = termo.trim().replace(/\s+/g, ' ');
     if (!termo) return;
+    clearTimeout(timerDigitacao);
     controle?.abort();
-    controle = new AbortController();
     ultimaBusca = termo;
+    const chave = normalizarTexto(termo);
+    if (cacheBusca.has(chave)) { // já buscado: mostra na hora, sem ir ao servidor
+      resultados = cacheBusca.get(chave);
+      estadoBusca = 'ok';
+      desenharPesquisa();
+      return;
+    }
+    controle = new AbortController();
     estadoBusca = 'carregando';
     desenharPesquisa();
     try {
@@ -110,6 +132,8 @@ export async function renderizar(el, ctx) {
         poster: urlPoster(r.poster_path),
         sinopse: r.overview || '',
       }));
+      cacheBusca.set(chave, resultados);
+      if (cacheBusca.size > 40) cacheBusca.delete(cacheBusca.keys().next().value);
       estadoBusca = 'ok';
     } catch (e) {
       if (e.name === 'AbortError') return;
@@ -121,6 +145,9 @@ export async function renderizar(el, ctx) {
   }
 
   function desenharPesquisa() {
+    // Com o formulário na tela, troca só os resultados: o campo (e o cursor) fica como está
+    const resultadosEl = el.querySelector('#secao-pesquisa-corpo .area-resultados');
+    if (resultadosEl) { resultadosEl.innerHTML = htmlResultados(); return; }
     const area = el.querySelector('#secao-pesquisa-corpo');
     if (!area) return;
     const tinhaFoco = document.activeElement?.id === 'busca-tmdb';
@@ -317,6 +344,20 @@ export async function renderizar(el, ctx) {
   }
 
   // ---------------- Eventos ----------------
+  el.addEventListener('input', (e) => {
+    if (e.target.id !== 'busca-tmdb') return;
+    clearTimeout(timerDigitacao);
+    const termo = e.target.value.trim();
+    if (termo.length < MIN_LETRAS) {
+      // apagou tudo (ou só 1 letra): limpa os resultados
+      controle?.abort();
+      if (!termo) { resultados = null; estadoBusca = 'parado'; ultimaBusca = ''; desenharPesquisa(); }
+      return;
+    }
+    if (normalizarTexto(termo) === normalizarTexto(ultimaBusca) && estadoBusca !== 'erro') return;
+    timerDigitacao = setTimeout(() => buscar(termo), ESPERA_DIGITACAO);
+  });
+
   el.addEventListener('submit', (e) => {
     if (!e.target.matches('[data-buscar]')) return;
     e.preventDefault();
@@ -388,5 +429,5 @@ export async function renderizar(el, ctx) {
 
   ligarFallbackPoster(el);
   desenhar();
-  return () => controle?.abort();
+  return () => { clearTimeout(timerDigitacao); controle?.abort(); };
 }
