@@ -1,5 +1,9 @@
 // Cinema: sala decorada + player oficial do YouTube (IFrame API)
 //  - Sessão juntos: o que um perfil coloca/pausa/avança aparece na tela do outro (sala-cinema.js)
+//    Sincronia fina (../sincronia-cinema.js): quem agiu por último é o "maestro" e manda a posição
+//    a cada 2 s; o outro corrige acelerando/desacelerando um pouco ou pulando. O atraso da internet
+//    é medido com ping/pong, então relógios diferentes nos aparelhos não atrapalham. Se o vídeo de
+//    um travar para carregar, o do outro pausa e espera.
 //  - Reações (risada, tristeza, pipoca, susto) que flutuam na tela dos dois
 //  - Todo vídeo assistido fica salvo em "Sessões"; os preferidos ganham estrela em "Favoritos"
 //  - Chat do casal ao lado do vídeo (../chat-cinema.js)
@@ -19,6 +23,7 @@ import { montarPainelConquistas } from '../conquistas.js';
 import { montarChat, MAX_MENSAGEM } from '../chat-cinema.js';
 import { notificarOutro } from '../notificacoes.js';
 import { lerFila, adicionarNaFila, removerDaFila, moverNaFila, infoDoYoutube, MAX_FILA } from '../fila-cinema.js';
+import { criarRelogio, decidirCorrecao, maestroVence, ADIANTO_PULO } from '../sincronia-cinema.js';
 
 export const REACOES = {
   risada: { emoji: '😂', nome: 'Risada' },
@@ -113,6 +118,23 @@ export async function renderizar(el, ctx) {
   let timerPersistir = null;
   const timersReacao = new Map();
   let juntosLigado = true;
+  // Sincronia fina
+  const relogio = criarRelogio();
+  let maestro = { perfil: eu, desde: 0 }; // quem guia a sessão (desde: horário no MEU relógio; 0 = ninguém agiu)
+  let pausaCorrecaoAte = 0;
+  let timerTaxa = null;
+  let esperando = null;       // { de, timer }: pausei para esperar o outro carregar
+  let timerCarregando = null;
+  let avisouCarregando = false;
+  let tocavaAntes = false;
+  let ultimaDiferenca = null;
+  let estadoSinc = '';        // 'ok' | 'ajustando' (visto por quem acompanha)
+  let relatoOutro = null;     // { estado, dif, em } enviado por quem acompanha
+  let ultimoPulsoEm = 0;
+  let marcaEnvio = null;      // { pos, em }: para saber se o vídeo está andando (anúncio = tempo parado)
+  let marcaCorrecao = null;
+  let marcaTravado = null;
+  let ticksParado = 0;
   try { juntosLigado = localStorage.getItem('nc:cinema-juntos') !== 'nao'; } catch { /* ignora */ }
 
   el.innerHTML = '<div class="estado"><span class="spinner pequeno" aria-hidden="true"></span> Preparando a sala…</div>';
@@ -152,6 +174,7 @@ export async function renderizar(el, ctx) {
               <div class="chat-flutuante" aria-hidden="true"></div>
               <div class="creditos" id="creditos" role="status" hidden></div>
               <div class="tela-entrar" id="tela-entrar" hidden></div>
+              <div class="sinc-espera" data-sinc-espera role="status" hidden></div>
               <div class="tela-aviso" id="tela-aviso" role="alert" hidden></div>
             </div>
             <div class="barra-reacoes" role="group" aria-label="Reações">
@@ -175,6 +198,7 @@ export async function renderizar(el, ctx) {
     <section class="cartao controles-cinema" aria-labelledby="titulo-controles">
       <h2 id="titulo-controles" class="sr-only">Carregar vídeo</h2>
       <div class="sala-status" id="sala-status" aria-live="polite"></div>
+      <p class="sinc-estado" data-sinc role="status" hidden><span class="ponto" aria-hidden="true"></span><span></span></p>
       <form class="formulario" id="form-video" novalidate>
         <div class="campo">
           <label for="url-video">Link ou ID de um vídeo do YouTube</label>
@@ -235,6 +259,8 @@ export async function renderizar(el, ctx) {
   const form = el.querySelector('#form-video');
   const statusSala = el.querySelector('#sala-status');
   const creditos = el.querySelector('#creditos');
+  const sincEl = el.querySelector('[data-sinc]');
+  const esperaEl = el.querySelector('[data-sinc-espera]');
   const filaEl = el.querySelector('[data-fila]');
   const botaoComecar = el.querySelector('[data-comecar-fila]');
 
@@ -267,6 +293,7 @@ export async function renderizar(el, ctx) {
   const marcarRemoto = (tocando = null) => { aplicandoRemotoAte = Date.now() + 2000; estadoEsperado = tocando; };
   const tempoAtual = () => { try { return player?.getCurrentTime?.() || 0; } catch { return 0; } };
   const tocandoAgora = () => { try { return player?.getPlayerState?.() === 1; } catch { return false; } };
+  const estadoPlayer = () => { try { return player?.getPlayerState?.() ?? -1; } catch { return -1; } };
 
   function mostrarAviso(mensagem, id) {
     aviso.hidden = false;
@@ -303,6 +330,9 @@ export async function renderizar(el, ctx) {
       if (dados.title) atualizarTituloAutomatico(dados.title);
       if (dados.author) videoAtual.canal = dados.author;
     }
+    if (ev.data === 3) comecouCarregar();
+    else { terminouCarregar(ev.data); tocavaAntes = ev.data === 1; }
+    if (ev.data === 1 && esperando) terminarEspera(null, { tocar: false });
     if (ev.data === 1) { entrar.hidden = true; jaInteragiu = true; abrirCortina(); esconderCreditos(); }
     if (ev.data === 0) mostrarCreditos();
     marcarTocando(ev.data === 1);
@@ -329,7 +359,7 @@ export async function renderizar(el, ctx) {
       canal: novo ? '' : (videoAtual?.canal || ''),
     };
     esconderCreditos();
-    if (novo) fecharCortina();
+    if (novo) { fecharCortina(); voltarVelocidadeNormal(); terminarEspera(null, { tocar: false }); }
     aviso.hidden = true;
     entrar.hidden = true;
     vazia.hidden = true;
@@ -384,23 +414,27 @@ export async function renderizar(el, ctx) {
     // não devolve o eco do que acabou de chegar do outro perfil
     if (ultimoRemoto && Date.now() - ultimoRemoto.recebidoEm < 2500 && ultimoRemoto.tocando === tocando
       && Math.abs(ultimoRemoto.posicaoEstimada() - dados.posicao) < 1.5) return;
+    assumirMaestro(); // ação minha: agora eu guio a sessão
     if (podeSincronizar()) sala.enviar('estado', dados);
     if (juntosLigado) persistirSala(dados);
   }
 
-  function alvoDe(msg) {
-    const atraso = msg.tocando ? Math.min(6, Math.max(0, (Date.now() - (msg.em || Date.now())) / 1000)) : 0;
-    return (Number(msg.posicao) || 0) + atraso;
+  /** Posição do outro, estimada para "agora": posição enviada + atraso medido da internet + tempo desde que chegou. */
+  function estimador(msg) {
+    const recebidoEm = Date.now();
+    const base = (Number(msg.posicao) || 0) + (msg.tocando ? relogio.atrasoDe(msg.em, recebidoEm) : 0);
+    return () => base + (msg.tocando ? (Date.now() - recebidoEm) / 1000 : 0);
   }
 
   async function aplicarRemoto(msg, { carregarSeNovo = true } = {}) {
     if (!juntosLigado) return;
     const recebidoEm = Date.now();
-    ultimoRemoto = { ...msg, recebidoEm, posicaoEstimada: () => alvoDe(msg) + (msg.tocando ? (Date.now() - recebidoEm) / 1000 : 0) };
+    const posicaoEstimada = estimador(msg);
+    ultimoRemoto = { ...msg, recebidoEm, posicaoEstimada };
     if (!videoAtual || videoAtual.youtubeId !== msg.youtubeId) {
       if (!carregarSeNovo) return;
       marcarRemoto(msg.tocando && jaInteragiu);
-      await mostrarVideo(msg.youtubeId, msg.titulo, { inicio: alvoDe(msg), tocar: msg.tocando && jaInteragiu, escolhidoPor: msg.escolhidoPor || msg.de });
+      await mostrarVideo(msg.youtubeId, msg.titulo, { inicio: posicaoEstimada(), tocar: msg.tocando && jaInteragiu, escolhidoPor: msg.escolhidoPor || msg.de });
       if (msg.tocando && !jaInteragiu) mostrarEntrar(`Assistir junto com ${nome(msg.de)}`);
       else if (msg.tocando) conferirAutoplay(msg.de);
       setTimeout(recarregarVideos, 1500);
@@ -408,14 +442,217 @@ export async function renderizar(el, ctx) {
     }
     if (!usandoApi || !player?.seekTo) return;
     await playerPronto;
-    const alvo = alvoDe(msg);
+    const alvo = posicaoEstimada();
     const precisaPular = Math.abs(tempoAtual() - alvo) > 1.5;
     const precisaMudar = msg.tocando !== tocandoAgora();
     if (!precisaPular && !precisaMudar) return;
     marcarRemoto(msg.tocando);
-    if (precisaPular) player.seekTo(alvo, true);
+    voltarVelocidadeNormal();
+    pausaCorrecaoAte = Date.now() + 2500; // deixa assentar antes da correção fina
+    if (precisaPular) player.seekTo(alvo + (msg.tocando ? ADIANTO_PULO : 0), true);
     if (msg.tocando) { player.playVideo(); conferirAutoplay(msg.de); } else player.pauseVideo();
   }
+
+  // ---------------- Sincronia fina ----------------
+  const comOutro = () => podeSincronizar() && sala.presentes.has(outro.id);
+  const souMaestro = () => maestro.perfil === eu;
+
+  function assumirMaestro() {
+    maestro = { perfil: eu, desde: Date.now() };
+    voltarVelocidadeNormal();
+  }
+
+  /** Outro perfil agiu ou está guiando: vira maestro se a ação dele for a mais recente. */
+  function considerarMaestro(de, desdeDele) {
+    const candidato = { perfil: de, desde: desdeDele ? relogio.paraMeu(desdeDele) : 0 };
+    if (maestro.perfil === de || maestroVence(maestro, candidato)) { maestro = candidato; return true; }
+    return false;
+  }
+
+  const taxasDisponiveis = () => { try { return player?.getAvailablePlaybackRates?.() || []; } catch { return []; } };
+
+  function mudarVelocidade(taxa, segundos) {
+    try { player.setPlaybackRate(taxa); } catch { return; }
+    clearTimeout(timerTaxa);
+    timerTaxa = setTimeout(() => { timerTaxa = null; try { player?.setPlaybackRate?.(1); } catch { /* ignora */ } desenharSinc(); }, Math.min(segundos, 8) * 1000);
+  }
+
+  function voltarVelocidadeNormal() {
+    clearTimeout(timerTaxa);
+    timerTaxa = null;
+    try { if (player?.getPlaybackRate?.() !== 1) player?.setPlaybackRate?.(1); } catch { /* ignora */ }
+  }
+
+  /** Tocando mas o tempo do vídeo não anda (anúncio do YouTube, travado): não serve de referência. */
+  function tempoParado(st, marca) {
+    const agora = { pos: tempoAtual(), em: Date.now() };
+    const parado = st === 1 && marca && agora.em - marca.em < 5000 && agora.em - marca.em > 900 && agora.pos - marca.pos < 0.3;
+    return { parado, agora };
+  }
+
+  function enviarPulso() {
+    if (!videoAtual || !usandoApi || !player || esperando || !creditos.hidden) return;
+    const st = estadoPlayer();
+    if (![1, 2, 5].includes(st)) return; // carregando ou terminou: posição não é confiável
+    const { parado, agora } = tempoParado(st, marcaEnvio);
+    marcaEnvio = agora;
+    if (parado) return;
+    sala.enviar('sinc-pulso', { youtubeId: videoAtual.youtubeId, titulo: videoAtual.titulo, escolhidoPor: videoAtual.escolhidoPor, tocando: st === 1, posicao: tempoAtual(), desde: maestro.desde });
+  }
+
+  function receberPulso(msg) {
+    if (!considerarMaestro(msg.de, msg.desde)) return; // eu agi depois: continuo guiando
+    ultimoPulsoEm = Date.now();
+    if (!videoAtual || videoAtual.youtubeId !== msg.youtubeId) { aplicarRemoto(msg); return; }
+    corrigir(msg);
+  }
+
+  /** Correção fina de quem acompanha o maestro. */
+  function corrigir(msg) {
+    if (!usandoApi || !player?.seekTo || esperando || !creditos.hidden || !entrar.hidden) return;
+    if (Date.now() < pausaCorrecaoAte || Date.now() < aplicandoRemotoAte) return;
+    const st = estadoPlayer();
+    if (st === 3 || st === -1 || st === 0) return;
+    const tocandoLa = Boolean(msg.tocando);
+    if (tocandoLa !== (st === 1)) { aplicarRemoto(msg, { carregarSeNovo: false }); return; }
+    const { parado, agora } = tempoParado(st, marcaCorrecao);
+    marcaCorrecao = agora;
+    if (parado) return; // estou num anúncio: espera ele acabar
+    const alvo = estimador(msg)();
+    const diferenca = tempoAtual() - alvo;
+    ultimaDiferenca = diferenca;
+    const decisao = decidirCorrecao({ diferenca, tocando: tocandoLa, taxas: taxasDisponiveis() });
+    if (decisao.acao === 'nada') {
+      if (!timerTaxa) voltarVelocidadeNormal();
+      definirEstadoSinc('ok');
+    } else if (decisao.acao === 'velocidade') {
+      mudarVelocidade(decisao.taxa, decisao.duracao);
+      definirEstadoSinc('ajustando');
+    } else {
+      voltarVelocidadeNormal();
+      marcarRemoto(tocandoLa);
+      player.seekTo(alvo + (tocandoLa ? ADIANTO_PULO : 0), true);
+      pausaCorrecaoAte = Date.now() + 3000;
+      definirEstadoSinc('ajustando');
+    }
+  }
+
+  function definirEstadoSinc(novo) {
+    const mudou = novo !== estadoSinc;
+    estadoSinc = novo;
+    if (mudou && comOutro()) sala.enviar('sinc-relato', { estado: novo, dif: ultimaDiferenca });
+    desenharSinc();
+  }
+
+  // Travou para carregar: depois de 1,2 s avisa o outro, que pausa e espera
+  function comecouCarregar() {
+    if (timerCarregando || avisouCarregando) return;
+    timerCarregando = setTimeout(() => {
+      timerCarregando = null;
+      if (estadoPlayer() !== 3 || !tocavaAntes || !videoAtual || !comOutro()) return;
+      avisouCarregando = true;
+      sala.enviar('sinc-carregando', { youtubeId: videoAtual.youtubeId, posicao: tempoAtual() });
+    }, 1200);
+  }
+
+  function terminouCarregar(st) {
+    clearTimeout(timerCarregando);
+    timerCarregando = null;
+    if (!avisouCarregando) return;
+    avisouCarregando = false;
+    if (videoAtual && comOutro()) sala.enviar('sinc-pronto', { youtubeId: videoAtual.youtubeId, posicao: tempoAtual(), tocando: st === 1 });
+  }
+
+  function receberCarregando(msg) {
+    if (!videoAtual || msg.youtubeId !== videoAtual.youtubeId || !usandoApi || !player?.pauseVideo || esperando) return;
+    if (estadoPlayer() !== 1) return;
+    voltarVelocidadeNormal();
+    marcarRemoto(false);
+    player.pauseVideo();
+    esperando = { de: msg.de, timer: setTimeout(() => terminarEspera(null), 12000) }; // não espera para sempre
+    desenharSinc();
+  }
+
+  /** Fim da espera: com `msg` (o outro terminou de carregar) volta junto no ponto dele. */
+  function terminarEspera(msg, { tocar = true } = {}) {
+    const e = esperando;
+    if (!e) return;
+    clearTimeout(e.timer);
+    esperando = null;
+    desenharSinc();
+    if (!tocar || !player?.playVideo) return;
+    if (msg && msg.tocando === false) return; // o outro pausou: fica pausado também
+    if (msg) {
+      const alvo = estimador({ ...msg, tocando: true })();
+      if (Math.abs(tempoAtual() - alvo) > 0.25) player.seekTo(alvo, true);
+    }
+    marcarRemoto(true);
+    pausaCorrecaoAte = Date.now() + 2000;
+    player.playVideo();
+  }
+
+  function desenharSinc() {
+    const agora = Date.now();
+    let texto = '';
+    let classe = 'ok';
+    let detalhe = '';
+    if (comOutro() && videoAtual && usandoApi && juntosLigado) {
+      if (esperando) { texto = `Esperando ${nome(esperando.de)} carregar…`; classe = 'esperando'; }
+      else if (souMaestro()) {
+        const relato = relatoOutro && agora - relatoOutro.em < 12000 ? relatoOutro : null;
+        if (relato) {
+          texto = relato.estado === 'ajustando' ? `${nome(outro.id)} está se ajustando…` : `Sincronizados com ${nome(outro.id)}`;
+          classe = relato.estado === 'ajustando' ? 'ajustando' : 'ok';
+          if (Number.isFinite(relato.dif)) detalhe = `Diferença: ${Math.abs(relato.dif).toFixed(1).replace('.', ',')} s`;
+        }
+      } else if (agora - ultimoPulsoEm < 7000) {
+        const ajustando = estadoSinc === 'ajustando' || timerTaxa || agora < pausaCorrecaoAte;
+        texto = ajustando ? 'Ajustando a sincronia…' : `Sincronizados com ${nome(maestro.perfil)}`;
+        classe = ajustando ? 'ajustando' : 'ok';
+        if (Number.isFinite(ultimaDiferenca)) detalhe = `Diferença: ${Math.abs(ultimaDiferenca).toFixed(1).replace('.', ',')} s`;
+      }
+    }
+    const ida = relogio.ida();
+    if (texto && ida !== null) detalhe += `${detalhe ? ' · ' : ''}Conexão: ${Math.round(ida * 2)} ms`;
+    sincEl.hidden = !texto;
+    if (sincEl.dataset.texto !== texto) { sincEl.dataset.texto = texto; sincEl.querySelector('span:last-child').textContent = texto; }
+    sincEl.className = `sinc-estado ${classe}`;
+    sincEl.title = detalhe;
+    sincEl.dataset.dif = Number.isFinite(ultimaDiferenca) ? ultimaDiferenca.toFixed(2) : '';
+    esperaEl.hidden = !esperando;
+    if (esperando) esperaEl.textContent = `Esperando ${nome(esperando.de)} carregar…`;
+  }
+
+  /** "Tocando" mas o tempo não anda há 2 s (anúncio do YouTube, rede presa): trata como travada. */
+  function verificarTravado() {
+    const st = estadoPlayer();
+    const agora = { pos: tempoAtual(), em: Date.now(), st };
+    const anterior = marcaTravado;
+    marcaTravado = agora;
+    const parado = st === 1 && anterior?.st === 1 && agora.em - anterior.em < 3000 && agora.pos - anterior.pos < 0.3;
+    ticksParado = parado ? ticksParado + 1 : 0;
+    if (!videoAtual || !comOutro() || timerCarregando) return;
+    if (ticksParado >= 2 && !avisouCarregando && !esperando) {
+      avisouCarregando = true;
+      sala.enviar('sinc-carregando', { youtubeId: videoAtual.youtubeId, posicao: agora.pos });
+    } else if (!parado && avisouCarregando && st === 1) {
+      avisouCarregando = false;
+      sala.enviar('sinc-pronto', { youtubeId: videoAtual.youtubeId, posicao: agora.pos, tocando: true });
+    }
+  }
+
+  // Relógio da sincronia: mede a conexão, o maestro manda a posição e quem acompanha relata
+  let tiqueSinc = 0;
+  const relogioSinc = setInterval(() => {
+    tiqueSinc += 1;
+    verificarTravado();
+    if (comOutro()) {
+      if (relogio.amostras < 4 ? tiqueSinc % 2 === 0 : tiqueSinc % 15 === 0) sala.enviar('sinc-ping', { t0: Date.now() });
+      if (tiqueSinc % 2 === 0 && souMaestro()) enviarPulso();
+      if (tiqueSinc % 6 === 0 && !souMaestro() && estadoSinc && Date.now() - ultimoPulsoEm < 7000) sala.enviar('sinc-relato', { estado: estadoSinc, dif: ultimaDiferenca });
+    }
+    desenharSinc();
+  }, 1000);
 
   /** Navegadores bloqueiam som automático sem um toque: se não tocou, mostra o botão. */
   function conferirAutoplay(de) {
@@ -426,12 +663,23 @@ export async function renderizar(el, ctx) {
 
   const pararOuvirSala = sala ? sala.ouvir((msg) => {
     if (!juntosLigado) return;
+    if (msg.tipo === 'sinc-ping') { sala.enviar('sinc-pong', { para: msg.de, t0: msg.t0, t1: Date.now() }); return; }
+    if (msg.tipo === 'sinc-pong') { if (msg.para === eu) relogio.registrar({ t0: msg.t0, t1: msg.t1, t3: Date.now() }); return; }
+    if (msg.tipo === 'sinc-pulso') { receberPulso(msg); return; }
+    if (msg.tipo === 'sinc-relato') { relatoOutro = { estado: msg.estado, dif: Number(msg.dif), em: Date.now() }; desenharSinc(); return; }
+    if (msg.tipo === 'sinc-carregando') { receberCarregando(msg); return; }
+    if (msg.tipo === 'sinc-pronto') { if (esperando && msg.youtubeId === videoAtual?.youtubeId) terminarEspera(msg); return; }
     if (msg.tipo === 'carregar' || msg.tipo === 'estado') {
       if (msg.tipo === 'carregar') toast(`${nome(msg.de)} colocou "${msg.titulo || 'um vídeo'}" na tela.`, 'info', { duracao: 3000 });
+      // Ação do outro (play, pausa, pulo, vídeo novo) → ele passa a guiar; resposta a "pedir-estado" usa o "desde" dele
+      if (msg.resposta) considerarMaestro(msg.de, msg.desde);
+      else considerarMaestro(msg.de, msg.em);
+      if (esperando) terminarEspera(null, { tocar: false });
       aplicarRemoto(msg);
     } else if (msg.tipo === 'pedir-estado') {
       if (videoAtual && usandoApi) {
-        sala.enviar('estado', { youtubeId: videoAtual.youtubeId, titulo: videoAtual.titulo, escolhidoPor: videoAtual.escolhidoPor, tocando: tocandoAgora(), posicao: tempoAtual() });
+        if (!maestro.desde) maestro = { perfil: eu, desde: Date.now() }; // já estava aqui: guio quem chegou
+        sala.enviar('estado', { youtubeId: videoAtual.youtubeId, titulo: videoAtual.titulo, escolhidoPor: videoAtual.escolhidoPor, tocando: tocandoAgora(), posicao: tempoAtual(), resposta: true, desde: souMaestro() ? maestro.desde : 0 });
       }
     } else if (msg.tipo === 'reacao' && REACOES[msg.reacao]) {
       if (!videoAtual || msg.youtubeId === videoAtual.youtubeId) soltarReacao(msg.reacao, msg.de);
@@ -475,6 +723,7 @@ export async function renderizar(el, ctx) {
     const salvo = videos.find((v) => v.youtubeId === id);
     const t = titulo || salvo?.titulo || '';
     await mostrarVideo(id, t, { inicio, tocar: true, escolhidoPor });
+    assumirMaestro();
     if (podeSincronizar()) sala.enviar('carregar', { youtubeId: id, titulo: t, escolhidoPor, tocando: true, posicao: inicio });
     if (juntosLigado) persistirSala({ youtubeId: id, titulo: t, escolhidoPor, tocando: true, posicao: inicio });
     registrarSessao(id, t);
@@ -889,6 +1138,7 @@ export async function renderizar(el, ctx) {
 
   el.querySelector('[data-juntos]').addEventListener('change', (e) => {
     juntosLigado = e.target.checked;
+    if (!juntosLigado) { voltarVelocidadeNormal(); terminarEspera(null, { tocar: false }); }
     try { localStorage.setItem('nc:cinema-juntos', juntosLigado ? 'sim' : 'nao'); } catch { /* ignora */ }
     desenharStatus();
     if (juntosLigado && podeSincronizar()) {
@@ -999,6 +1249,10 @@ export async function renderizar(el, ctx) {
     pararStatus();
     clearTimeout(timerPersistir);
     clearInterval(relogioCinema);
+    clearInterval(relogioSinc);
+    clearTimeout(timerTaxa);
+    clearTimeout(timerCarregando);
+    if (esperando) clearTimeout(esperando.timer);
     clearTimeout(timerCreditos);
     clearTimeout(timerCortina);
     pararOuvirFila();

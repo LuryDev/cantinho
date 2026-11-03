@@ -22,6 +22,9 @@ const relogioVideo = (s) => {
   return h ? `${h}:${String(m).padStart(2, '0')}:${seg}` : `${m}:${seg}`;
 };
 
+// Ordem de chegada: o histórico segue a hora do SERVIDOR (criadoEm), não o relógio de cada aparelho
+const ordemServidor = (m) => String(m.criadoEm || m.em || '');
+
 const hora = (iso) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
 function rotuloDia(iso) {
@@ -79,7 +82,7 @@ export function montarChat({ painel, flutuante, formRapido, perfil, sala, contex
   function htmlMensagem(m, anterior) {
     const minha = m.de === eu;
     const novoDia = !anterior || new Date(anterior.em).toDateString() !== new Date(m.em).toDateString();
-    const agrupada = !novoDia && anterior && anterior.de === m.de && new Date(m.em) - new Date(anterior.em) < 120000;
+    const agrupada = !novoDia && anterior && anterior.de === m.de && Math.abs(new Date(m.em) - new Date(anterior.em)) < 120000;
     const idYt = extrairId(m.texto.match(/\S*(?:youtu\.be|youtube\.com)\S*/i)?.[0] || '');
     return `
       ${novoDia ? `<li class="chat-dia" role="presentation"><span>${esc(rotuloDia(m.em))}</span></li>` : ''}
@@ -98,7 +101,8 @@ export function montarChat({ painel, flutuante, formRapido, perfil, sala, contex
 
   function desenhar({ manterPosicao = false } = {}) {
     const estavaNoFim = pertoDoFim();
-    const ordenadas = [...mensagens].sort((a, b) => String(a.em).localeCompare(String(b.em)));
+    // `mensagens` já está na ordem de chegada (não reordena pela hora de quem mandou)
+    const ordenadas = mensagens;
     lista.innerHTML = ordenadas.length
       ? ordenadas.map((m, i) => htmlMensagem(m, ordenadas[i - 1])).join('')
       : `<li class="chat-vazio" role="presentation">${icone('balao')}<span>Nenhuma mensagem ainda. Mande um oi para ${esc(outro.nome)}!</span></li>`;
@@ -210,7 +214,8 @@ export function montarChat({ painel, flutuante, formRapido, perfil, sala, contex
   listar('mensagens', { limite: HISTORICO })
     .then((salvas) => {
       const conhecidas = new Set(mensagens.map((m) => m.idLocal).filter(Boolean));
-      mensagens = [...salvas.filter((m) => !conhecidas.has(m.idLocal)), ...mensagens];
+      const antigas = salvas.filter((m) => !conhecidas.has(m.idLocal)).sort((a, b) => ordemServidor(a).localeCompare(ordemServidor(b)));
+      mensagens = [...antigas, ...mensagens];
       if (painel.isConnected) desenhar();
     })
     .catch(() => {

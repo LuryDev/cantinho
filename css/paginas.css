@@ -585,6 +585,16 @@ html[data-movimento="reduzir"] .reacao-voando { animation: none; bottom: 40%; op
 .ponto.ligado { background: var(--cor-sucesso); box-shadow: 0 0 0 4px color-mix(in srgb, var(--cor-sucesso) 25%, transparent); }
 .ponto.erro { background: var(--cor-erro); }
 .ponto.desligado { background: var(--cor-borda); }
+.sinc-estado { display: inline-flex; align-items: center; gap: .45rem; margin: 0; padding: .2rem .7rem; border-radius: 999px; background: var(--cor-superficie-2); font-size: .82rem; font-weight: 700; color: var(--cor-texto-suave); width: fit-content; }
+.sinc-estado[hidden] { display: none; }
+.sinc-estado .ponto { width: 8px; height: 8px; }
+.sinc-estado.ok .ponto { background: var(--cor-sucesso); }
+.sinc-estado.ajustando .ponto { background: var(--cor-destaque); animation: sinc-pulsar 1s ease-in-out infinite; }
+.sinc-estado.esperando .ponto { background: var(--cor-destaque); }
+@keyframes sinc-pulsar { 50% { opacity: .35; } }
+html[data-movimento="reduzir"] .sinc-estado .ponto { animation: none; }
+.sinc-espera { position: absolute; left: 50%; bottom: 1rem; z-index: 4; transform: translateX(-50%); padding: .45rem 1rem; border-radius: 999px; background: rgba(15, 8, 12, .85); color: #fff; font-size: .92rem; font-weight: 700; box-shadow: 0 6px 18px rgba(0, 0, 0, .35); white-space: nowrap; pointer-events: none; }
+.sinc-espera[hidden] { display: none; }
 
 .interruptor { display: inline-flex; align-items: center; gap: .55rem; min-height: 44px; cursor: pointer; font-weight: 600; position: relative; }
 .interruptor input { position: absolute; opacity: 0; width: 1px; height: 1px; }
